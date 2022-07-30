@@ -1,5 +1,5 @@
 from enum import Enum
-import datetime
+from datetime import datetime, timedelta
 
 class Recur(Enum):
     SECOND = 'second'
@@ -32,32 +32,79 @@ RECURRENCE_ENCODING = {
     Recur.YEAR		: 'Y',  # FIXME: this only works for my personal config
 }
 
-class CalTime(datetime.datetime):
+class CalTimeIncrement:
+    '''Special date increments'''
+    def __add__(self, caltime):
+        raise Exception('NIY')
+
+
+class MonthIncrement(CalTimeIncrement):
+    def __init__(self, count=1):
+        super().__init__()
+        self.months = count
+        assert(count >= 0)
+
+    def __add__(self, caltime):
+        # FIXME: optimise for larger counts
+        c = self.months
+        if c == 0:
+            return caltime
+
+        desired_day = caltime.day
+        c -= 1
+        caltime += timedelta(days = 1 + caltime.number_of_days_in_month() - caltime.day)
+
+        while c > 0:
+            c -= 1
+            caltime += timedelta(days = caltime.number_of_days_in_month())
+
+        desired_day = min(desired_day, caltime.number_of_days_in_month())
+        return caltime + timedelta(days = desired_day - caltime.day)
+
+
+class YearIncrement(MonthIncrement):
+    def __init__(self, count=1):
+        # FIXME: optimise me
+        super().__init__(count=0)
+        self.months = count*12
+
+
+class CalTime(datetime):
     WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
-    def __init__(self, year_or_datetime, month=None, day=None, hour=None, minute=None):
-        if type(year_or_datetime) is datetime.datetime:
-            dt = year_or_datetime
-            assert(month == Null)
-            assert(day == Null)
-            assert(hour == Null)
-            assert(minute == Null)
-            datetime.datetime.__init__(self, dt.year, dt.month, dt.day, dt.hour, dt.minute)
+    def __new__(cls, year, month=None, day=None, hour=0, minute=0, second=0, microsecond=0, tzinfo=None):
+        assert(tzinfo == None)
+        if type(year) is datetime:
+            dt = year
+            assert(month == None)
+            assert(day == None)
+            assert(hour == None)
+            assert(minute == None)
+            assert(second == None)
+            assert(microsecond == None)
+            return super.__new__(cls, dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, dt.microsecond, dt.tzinfo)
         else:
-            year = year_or_datetime
-            datetime.datetime.__init__(self, year, month, day, hour, minute)
+            return super().__new__(cls, year, month, day, hour, minute, second, microsecond, tzinfo)
 
     def weekday_str(self):
         return CalTime.WEEKDAYS[self.weekday()]
 
     def date_str(self):
-        return self.datetime.strftime('%Y-%m-%d') + ' ' + self.weekday_str()
+        return self.strftime('%Y-%m-%d') + ' ' + self.weekday_str()
 
     def time_str(self):
-        return self.datetime.strftime('%H:%M')
+        return self.strftime('%H:%M')
 
     def as_mock(self):
-        return f'MockTS({self.datetime.year}, {self.datetime.month}, {self.datetime.day}, {self.datetime.hour}, {self.datetime.minute})'
+        return f'MockTS({self.year}, {self.month}, {self.day}, {self.hour}, {self.minute})'
+
+    def number_of_days_in_month(self):
+        year = self.year
+        dm = self.month + 1
+        if dm == 13:
+            dm = 1
+            year += 1
+        return (CalTime(year, dm, 1) - timedelta(days = 1)).day
 
     def timespec(self, repetition=None):
         if repetition is None:
@@ -66,8 +113,8 @@ class CalTime(datetime.datetime):
             repstr = f' {repetition.org_agenda_spec}'
         return f'<{self.date_str()} {self.time_str()}{repstr}>'
 
-    def __add__(self, timedelta):
-        return CalTime(self.datetime + timedelta)
+    def __repr__(self):
+        return self.date_str().replace(' ', ':') + ':' + self.time_str()
 
     @staticmethod
     def from_str(s):
@@ -79,7 +126,7 @@ class CalTime(datetime.datetime):
             month = int(date[5:7], 10)
             day = int(date[8:10], 10)
             hour = 0
-            second = 0
+            minute = 0
 
             ill_formed = False
 
@@ -91,7 +138,7 @@ class CalTime(datetime.datetime):
                 ill_formed = True
 
             if not ill_formed:
-                return CalTime(year, month, day, hour, second)
+                return CalTime(year, month, day, hour, minute)
         raise Exception(f'Ill-formed CalTime({s})')
 
     @staticmethod
@@ -100,35 +147,169 @@ class CalTime(datetime.datetime):
             return None
         # This seems to always hold for me; not sure if it is universal?
         assert t.get_timezone() is None or t.get_timezone().get_utc_offset()[0] == 0
-        return CalTime(datetime.datetime(year=t.get_year(),
-                                         month=t.get_month(),
-                                         day=t.get_day(),
-                                         hour=t.get_hour(),
-                                         minute=t.get_minute()))
+        return CalTime(year=t.get_year(),
+                       month=t.get_month(),
+                       day=t.get_day(),
+                       hour=t.get_hour(),
+                       minute=t.get_minute())
 
 
-class WeekdayShift:
-    def __init__(self, to_weekday):
-        self.to_weekday = to_weekday - 2
-        if self.to_weekday == -1:
-            self.to_weekday = 6 # Sunday
-        if self.to_weekday < 0 or self.to_weekday > 6:
-            raise Exception(f'Bad weekday shift: {to_weekday}')
+class Subiterator:
+    '''
+    Iterate within the outer date loop (e.g., for "every Wednesday and Thursday", the outer loop will increment
+    by one week, and the inner loop will yield Wednesdays and Thursday (via all_from)
+    '''
 
-    def shift(self, caltime : CalTime) -> tuple[CalTime, datetime.timedelta]:
-        one_day = datetime.timedelta(days=1)
-        delta =  datetime.timedelta(days=0)
-        result = caltime
-        while result.datetime.weekday() != self.to_weekday:
-            delta += one_day
-            result = caltime + delta
-        return (caltime, delta)
+    def __init__(self):
+        # FIXME
+        self.weekstart = 0 # Monday
 
+    def base_date(self, date):
+        '''For a given start, compute the date that the outer iterator should increment'''
+        raise Exception('NIY')
+
+    def all_from(self, date):
+        '''For date as a base_date or increment thereof (via the outer iterator), yield all inner dates'''
+        raise Exception('NIY')
+
+    def weekday(self, d):
+        return 6 if d == 1 else d - 2
+
+
+class WeekdaySubiterator(Subiterator):
+    '''Given a week, find the given weekdays'''
+
+    def __init__(self, weekdays):
+        '''Weekdays expected in ECal format, i.e., 1=Sun, 2=Mon'''
+        super().__init__()
+        weekdays = sorted(self.weekday(d) for d in weekdays)
+        self.first = weekdays[0]
+        self.day_increments = [(d - self.first) for d in weekdays]
+
+    def base_date(self, date):
+        return date - timedelta(days = date.weekday())
+
+    def all_from(self, date):
+        start = date
+        start = start + timedelta(days = self.first - start.weekday())
+        for days_after_first in self.day_increments:
+            yield start + timedelta(days = days_after_first)
+
+
+class MonthDayIterator(Subiterator):
+    '''Specific day per month'''
+    def __init__(self, days):
+        self.days = sorted(days)
+
+    def base_date(self, date):
+        return date - timedelta(days = date.day - 1)
+
+    def all_from(self, date):
+        start = date
+
+        DEBUGPRINT(f'days = {self.days}')
+        last_monthday = date.number_of_days_in_month()
+        for d in self.days:
+            if d >= start.day and d <= last_monthday:
+                yield start + timedelta(days = d - start.day)
+
+
+class MonthAndWeekdaySubiterator(MonthDayIterator):
+    '''Given a month, find the nth occurrence of specific weekdays (including the last ones)'''
+
+    def __init__(self, weeks_and_days):
+        '''
+        weeks_and_days = [(week, day), ...]
+        week=-1: last week
+        week=1 : first week (etc.)
+        Weekdays expected in ECal format, i.e., 1=Sun, 2=Mon
+        '''
+        self.neg_weekdays = []
+        self.pos_weekdays = []
+
+        for w, d in weeks_and_days:
+            d = self.weekday(d)
+            if w < 0:
+                w = -w
+                while len(self.neg_weekdays) <= w:
+                    self.neg_weekdays.append([])
+                self.neg_weekdays[w].append(d)
+            else:
+                while len(self.pos_weekdays) <= w:
+                    self.pos_weekdays.append([])
+                self.pos_weekdays[w].append(d)
+
+        for i in range(0, len(self.neg_weekdays)):
+            self.neg_weekdays[i] = sorted(self.neg_weekdays[i])
+
+        for i in range(0, len(self.pos_weekdays)):
+            self.pos_weekdays[i] = sorted(self.pos_weekdays[i])
+
+        DEBUGPRINT(f'pos: {self.pos_weekdays}')
+        DEBUGPRINT(f'neg: {self.neg_weekdays}')
+
+        # neg_weekdays[1] is now the ordered list of weekdays in the last week
+        # pos_weekdays[n] is now the ordered list of weekdays in the nth week
+
+    def all_from(self, date):
+        start = date
+
+        first_weekday = start.weekday()
+        last_monthday = date.number_of_days_in_month()
+
+        # positive week numbers
+        pos_day_offsets = []
+        week_offset = 0
+
+        for week in self.pos_weekdays[1:]:
+            for day in week:
+                day -= first_weekday
+                if day < 0:
+                    day += 7
+                pos_day_offsets.append(day + week_offset)
+            week_offset += 7
+
+        # negative week numbers
+        neg_day_offsets = []
+        week_offset = last_monthday - 6 # first day of the last 7 days
+        final_week_first_weekday = (start + timedelta(days = (week_offset - 1))).weekday()
+
+        for week in self.neg_weekdays[1:]:
+            for day in week:
+                DEBUGPRINT(f'  woff={week_offset}, day={day} - {final_week_first_weekday}')
+                day -= final_week_first_weekday
+                if day < 0:
+                    day += 7
+                neg_day_offsets.append(day + week_offset - start.day)
+            week_offset -= 7
+
+        # combine negative and positive
+        day_offsets = pos_day_offsets
+        if neg_day_offsets:
+            day_offsets = neg_day_offsets
+            if pos_day_offsets:
+                day_offsets = sorted(list(set(pos_day_offsets + neg_day_offset)))
+
+        DEBUGPRINT(f'offsets from {start},wday={first_weekday}/{final_week_first_weekday}: {day_offsets}')
+
+        for offset in day_offsets:
+            day = start.day + offset
+            if day > 0 and day <= last_monthday:
+                yield start + timedelta(days = offset)
+
+
+DEBUGPRINT_NONE=lambda _:()
+DEBUGPRINT=DEBUGPRINT_NONE
 
 class RecurrenceRange:
-    def __init__(self, recurrence, first_date):
+    def __init__(self, first_date : CalTime,
+                 increment : timedelta, subiterator,
+                 count : int, until : CalTime):
         self.first_date = first_date
-        self.recurrence = recurrence
+        self.increment = increment
+        self.subiterator = subiterator
+        self.count = None if count == 0 else count
+        self.until = until
 
     @property
     def start_date(self):
@@ -136,24 +317,104 @@ class RecurrenceRange:
 
     def all(self):
         '''Returns an iterator over all CalTimes'''
-        return self.from(self.start_date)
+        return self._starting(self.start_date)
 
-    def from(self, start : CalTime):
+    def before_end(self, caltime):
+        return self.until is None or caltime < self.until
+
+    def starting(self, start : CalTime):
         '''Returns an iterator over all CalTimes at or after 'start' '''
-        pass
+        if start == self.start_date:
+            for v in self._starting(start):
+                yield v
 
-    def is_unlimited(self):
-        pass
+        # must skip to first valid date
+        it = self._starting(self.start_date)
+        # Performance improvements possible here!
+
+        for v in it:
+            if v >= start:
+                yield v
+                for v in it:
+                    yield v
+                return
+        return
+
+
+    def _starting(self, start : CalTime):
+        '''Returns an iterator over all CalTimes explicitly starting at 'start' '''
+
+        count = self.count
+        pos = start
+
+        pr = DEBUGPRINT
+
+        pr(f"[it, c:{count}, until:{self.until}] -- START -- at {start}")
+
+        # Phase 1: Start date
+        if self.before_end(pos) and count != 0:
+            if count is not None:
+                count -= 1
+            pr(f"[it, c:{count}, until:{self.until}] Phase 1 ==> {pos}")
+            yield pos
+
+
+        # Phase 2: subiterator (if any) bounded by start date
+        if self.subiterator:
+            pos = self.subiterator.base_date(pos)
+            pr(f"[it, c:{count}, until:{self.until}] Phase 2 : {pos} <- base_date()")
+            for date in self.subiterator.all_from(pos):
+                if date > start:
+                    if count == 0 or not self.before_end(date):
+                        pr(f"[it, c:{count}, until:{self.until}] Phase 2 : done early")
+                        return # done
+                    if count is not None:
+                        count -= 1
+                    pr(f"[it, c:{count}, until:{self.until}] Phase 2 ==> {date}")
+                    yield date
+                else:
+                    pr(f"[it, c:{count}, until:{self.until}] Phase 2 skipping {date} (<= {start})")
+
+        pos = self.increment + pos
+        pr(f"[it, c:{count}, until:{self.until}] Phase 3: {pos}")
+
+        # Phase 3: free iteration
+        while self.before_end(pos) and count != 0:
+            if not self.subiterator:
+                pr(f"[it, c:{count}, until:{self.until}] Phase 3 ==> {pos}")
+                yield pos
+                if count is not None:
+                    count -= 1
+            else:
+                for date in self.subiterator.all_from(pos):
+                    if date > start:
+                        if count == 0 or not self.before_end(date):
+                            pr(f"[it, c:{count}, until:{self.until}] Phase 3 : done early")
+                            return # done
+                        if count is not None:
+                            count -= 1
+                        pr(f"[it, c:{count}, until:{self.until}] Phase 3 ==> {date}")
+                        yield date
+                    else:
+                        pr(f"[it, c:{count}, until:{self.until}] Phase 3 skipping {date} (<= {start})")
+
+            pos = self.increment + pos
+
+    def is_finite(self):
+        return self.count or self.until
 
 
 class Recurrence:
-    def __init__(self, spec, adjustment):
+    def __init__(self, spec, increment, subiterator, until, count):
         self.spec = spec
-        self.adjustment = adjustment
+        self.increment = increment
+        self.subiterator = subiterator
+        self.until = until
+        self.count = count
 
     def adjust_time(self, caltime : CalTime):
         if self.adjustment is None:
-            return (caltime, datetime.timedelta(days=0))
+            return (caltime, timedelta(days=0))
         return self.adjustment.shift(caltime)
 
     def org_agenda_spec(self):
@@ -162,7 +423,7 @@ class Recurrence:
 
     def range_from(self, starttime : CalTime) -> RecurrenceRange:
         '''Constructs a RecurrenceRange that can retrieve all individual instances, given a start time/date'''
-        return RecurrenceRange(self, starttime)
+        return RecurrenceRange(starttime, self.increment, self.subiterator, count=self.count, until=self.until)
 
     @staticmethod
     def evolution_rec_as_mock(rec):
@@ -218,7 +479,6 @@ class Recurrence:
             return None
 
         rec_factor = rec.get_interval()
-        rec.get_until()
 
         by_seconds =   [n for n in rec.get_by_second_array() if n < 60]
         by_minutes =   [n for n in rec.get_by_minute_array() if n < 60]
@@ -226,8 +486,8 @@ class Recurrence:
         by_weekdays =  [n for n in rec.get_by_day_array() if n < 50] # including nth-week encoding
         by_week_no =   [n for n in rec.get_by_week_no_array() if n < 54]
         by_month_day = [n for n in rec.get_by_month_day_array() if n < 32]
-        by_year_day =  [n for n in rec.get_by_year_day_array() if n < 366]
-        by_set_pos =   [n for n in rec.get_by_set_pos_array() if n < 100] # No idea what this is
+        by_year_day =  [n for n in rec.get_by_year_day_array() if n < 368]
+        by_set_pos =   [n for n in rec.get_by_set_pos_array() if n < 368] # No clear idea what this is
 
         nonempty_periods = [b for b in [('seconds', by_seconds),
                                         ('minutes', by_minutes),
@@ -240,37 +500,57 @@ class Recurrence:
 
         processed_periods = []
 
-        adjustments = [None]
         spec = None
+        increment = None    # delta for 'outer loop' (for simple specs the only loop) in iterating over all dates
+        subiterator = None  # 'inner loop' spec (e.g., iterating over certain weekdays)
 
         if rec_unit == Recur.SECOND:
             return 'WARNING: Cannot use second-based repetition.'
         elif rec_unit == Recur.MINUTE:
-            return 'WARNING: minute-based repetition not implemented yet.'
+            increment = timedelta(minutes = rec_factor)
         elif rec_unit == Recur.HOUR:
-            return 'WARNING: hour-based repetition not implemented yet.'
+            increment = timedelta(hours = rec_factor)
         elif rec_unit == Recur.DAY:
-            pass
+            increment = timedelta(days = rec_factor)
         elif rec_unit == Recur.WEEK:
-            # rec_factor = rec.get_by_week_no(0)
-            #return 'WARNING: week-based repetition not implemented yet.'
             if by_weekdays:
-                adjustments = [WeekdayShift(n) for n in by_weekdays]
+                subiterator = WeekdaySubiterator(by_weekdays)
+
+            increment = timedelta(weeks = rec_factor)
             processed_periods=[by_weekdays]
-        elif rec_unit == Recur.MONTH:
-            # monthday = rec.get_by_month_day(0)
-            # if monthday < 32:
-            #     pass
-            # rec_factor = rec.get_by_month(0)
-            #return 'WARNING: month-based repetition not implemented yet.'
-            pass
-        elif rec_unit == Recur.YEAR:
-            pass
+        elif rec_unit in [Recur.MONTH, Recur.YEAR]: # Very similar recurrence handling
+            if by_weekdays and by_set_pos and len(by_weekdays) == len(by_set_pos):
+                subiterator = MonthAndWeekdaySubiterator([
+                    (by_set_pos[i], d)  for (i, d) in enumerate(by_weekdays)])
+                processed_periods=[by_set_pos, by_weekdays]
+            elif by_weekdays:
+                def decode(encoded_weekday):
+                    if encoded_weekday < 0:
+                        week = -1 # last week
+                        weekday = (-encoded_weekday) - 8
+                    else:
+                        week = encoded_weekday >> 3
+                        weekday = encoded_weekday & 0x7
+                    return (week, weekday)
+
+                subiterator = MonthAndWeekdaySubiterator([decode(wd) for wd in by_weekdays])
+                processed_periods=[by_weekdays]
+            elif by_month_day:
+                subiterator = MonthDayIterator(by_month_day)
+                processed_periods=[by_month_day]
+
+            if rec_unit == Recur.MONTH:
+                increment = MonthIncrement(rec_factor)
+            elif rec_unit == Recur.YEAR:
+                increment = YearIncrement(rec_factor)
+            else:
+                raise Exception('Impossible')
         else:
             raise Exception('Impossible')
 
-        unit_enc = RECURRENCE_ENCODING[rec_unit]
-        spec = f'+{rec_factor}{unit_enc}'
+        if subiterator is None and rec.get_until() is None and rec.get_count() == 0: # Not complicated?
+            unit_enc = RECURRENCE_ENCODING[rec_unit]
+            spec = f'+{rec_factor}{unit_enc}'
 
         overlooked_periods = []
         for (nep_str, nep) in nonempty_periods:
@@ -283,10 +563,8 @@ class Recurrence:
                 overlooked_periods.append(nep_str + ' (' + ','.join(str(i) for i in nep) + ')')
 
         if overlooked_periods:
+            print(f'WARNING: Event repetition in {rec_unit} not completely handled due to ' + '; '.join(overlooked_periods))
             return f'WARNING: Event repetition in {rec_unit} not completely handled due to ' + '; '.join(overlooked_periods)
 
-        if not spec:
-            return 'WARNING: could not figure out recurrence strategy'
-
-        return [Recurrence(spec, a) for a in adjustments]
+        return Recurrence(spec, increment, subiterator, until=CalTime.from_evolution(rec.get_until()), count=rec.get_count())
 
