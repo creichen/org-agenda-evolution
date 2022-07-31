@@ -481,8 +481,6 @@ class TestRecurrence(unittest.TestCase):
                           ],
                          take(it.starting(dt('2022-05-24T13:30')), 2))
 
-    # # 2h30m ago I was just starting here:
-
     def test_every_fourth_wendesday_per_month(self):
         #caltime.DEBUGPRINT = print
         try:
@@ -829,27 +827,71 @@ class TestRecurrence(unittest.TestCase):
                           ],
                          take(it.starting(dt('2022-04-01T13:30')), 2))
 
-    # def test_weekstart_monday(self):
-    #     # DTSTART:19970805T090000
-    #     # RRULE:FREQ=WEEKLY;INTERVAL=2;COUNT=4;BYDAY=TU,SU;WKST=MO
-    #     # ==> (1997 EDT)Aug 5,10,19,24
-    #     start = CalTime.from_evolution(MockTS(1997, 8, 5, 10, 00))
-    #     occ = MockRecurrence(I_WEEK, 2, 4, by_day_array=[3, 1] + ([32639] * 384), week_start=I_CAL_MONDAY_WEEKDAY)
-    #     rec = Recurrence.from_evolution(occ)
-    #     raise Exception('FIXME')
+    def test_weekstart_monday(self):
+        # DTSTART:19970805T090000
+        # RRULE:FREQ=WEEKLY;INTERVAL=2;COUNT=4;BYDAY=TU,SU;WKST=MO
+        # ==> 1997 Aug 5,10,19,24
 
-    # def test_weekstart_sunday(self):
-    #     # DTSTART:19970805T090000
-    #     # RRULE:FREQ=WEEKLY;INTERVAL=2;COUNT=4;BYDAY=TU,SU;WKST=SU
-    #     # ==> (1997 EDT)August 5,17,19,31
-    #     start = CalTime.from_evolution(MockTS(1997, 8, 5, 10, 00))
-    #     occ = MockRecurrence(I_WEEK, 2, 4, by_day_array=[1, 3] + ([32639] * 384), week_start=I_CAL_SUNDAY_WEEKDAY)
-    #     rec = Recurrence.from_evolution(occ)
-    #     raise Exception('FIXME')
+        #caltime.DEBUGPRINT = print
+        try:
+            start = CalTime.from_evolution(MockTS(1997, 8, 5, 10, 00))
+            occ = MockRecurrence(I_WEEK, 2, 4, by_day_array=[3, 1] + ([32639] * 384), week_start=I_CAL_MONDAY_WEEKDAY)
+            rec = Recurrence.from_evolution(occ)
+            self.assertIs(None, rec.spec)
+            it = rec.range_from(start)
+            self.assertTrue(it.is_finite())
+            self.assertEqual([dt('1997-08-05T10:00'),
+                              dt('1997-08-10T10:00'),
+                              dt('1997-08-19T10:00'),
+                              dt('1997-08-24T10:00'),
+                              ],
+                             take(it.all(), 5))
+        finally:
+            caltime.DEBUGPRINT = DEBUGPRINT_NONE
 
-    # def test_until_exact(self):
-    #     '''"until" matches one of the recurrences'''
-    #     raise Exception('FIXME')
+
+    def test_weekstart_sunday(self):
+        # DTSTART:19970805T090000
+        # RRULE:FREQ=WEEKLY;INTERVAL=2;COUNT=4;BYDAY=TU,SU;WKST=SU
+        # ==> 1997 August 5,17,19,31
+
+        #caltime.DEBUGPRINT = print
+        try:
+            start = CalTime.from_evolution(MockTS(1997, 8, 5, 10, 00))
+            occ = MockRecurrence(I_WEEK, 2, 4, by_day_array=[1, 3] + ([32639] * 384), week_start=I_CAL_SUNDAY_WEEKDAY)
+            rec = Recurrence.from_evolution(occ)
+            self.assertIs(None, rec.spec)
+            it = rec.range_from(start)
+            self.assertTrue(it.is_finite())
+            self.assertEqual([dt('1997-08-05T10:00'),
+                              dt('1997-08-17T10:00'),
+                              dt('1997-08-19T10:00'),
+                              dt('1997-08-31T10:00'),
+                              ],
+                             take(it.all(), 5))
+        finally:
+            caltime.DEBUGPRINT = DEBUGPRINT_NONE
+
+    def test_until_exact(self):
+        '''"until" matches one of the recurrences'''
+        occ = MockRecurrence(I_DAY, 1, 0, until=MockTS(2020, 2, 1, 11, 0))
+        rec = Recurrence.from_evolution(occ)
+        self.assertIs(None, rec.spec)
+        it = rec.range_from(dt('2020-01-28T11:00'))
+        self.assertTrue(it.is_finite())
+        self.assertEqual(dt('2020-01-28T11:00'), it.start_date)
+        self.assertEqual([dt('2020-01-28T11:00'),
+                          dt('2020-01-29T11:00'),
+                          dt('2020-01-30T11:00'),
+                          dt('2020-01-31T11:00'),
+                          dt('2020-02-01T11:00'),
+                          ],
+                         take(it.all(), 10))
+        self.assertEqual([
+                          dt('2020-01-31T11:00'),
+                          dt('2020-02-01T11:00'),
+                          ],
+                         take(it.starting(dt('2020-01-30T13:30')), 10))
 
     # def test_cross_dst_boundary(self):
     #     '''DST messing things up again'''
