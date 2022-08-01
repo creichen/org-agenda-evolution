@@ -251,6 +251,9 @@ class OrgUnparser:
         self.pr(f'  :CALENDAR-UID: {event.uid}')
         if start.tzinfo != LOCAL_TIMEZONE:
             self.pr(f'  :CONVERTED-FROM-TZID: {start.tzinfo}')
+        self.pr(f'  :ORIGINAL-START: {repr(event.start)}')
+        self.pr(f'  :ORIGINAL-END: {repr(event.end)}')
+        self.pr(f'  :ORIGINAL-RECURRENCES: {str(event.recurrences)}')
         self.pr('  :END:')
 
 

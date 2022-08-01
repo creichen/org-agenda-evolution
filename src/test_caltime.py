@@ -442,6 +442,7 @@ class TestRecurrence(unittest.TestCase):
                           dt('2022-05-26T12:00'),
                           ],
                          take(it.starting(dt('2022-05-24T13:30')), 2))
+        self.assertEqual('{inc=7 days, 0:00:00, subit=Weekdays<sun=6>[from=0+[0, 2, 3]]}', str(rec))
 
     def test_weekly(self):
         occ = MockRecurrence(I_WEEK, 1, 0)
@@ -521,6 +522,7 @@ class TestRecurrence(unittest.TestCase):
                           dt('2022-02-15T00:00'),
                           ],
                          take(it.starting(dt('2022-01-31T13:30')), 10))
+        self.assertEqual('{inc=14 days, 0:00:00, subit=Weekdays<sun=6>[from=1+[0]], count=4}', str(rec))
 
     def test_every_first_sunday_per_month(self):
         #caltime.DEBUGPRINT = print
@@ -604,6 +606,7 @@ class TestRecurrence(unittest.TestCase):
                               dt('2022-06-02T00:00'),
                               ],
                              take(it.starting(dt('2022-04-01T13:30')), 2))
+            self.assertEqual('{inc={months+=2}, subit=MonthDays<sun=6>[2]}', str(rec))
         finally:
             caltime.DEBUGPRINT = DEBUGPRINT_NONE
 
@@ -693,6 +696,7 @@ class TestRecurrence(unittest.TestCase):
                               dt('2022-05-30T00:00'),
                               ],
                              take(it.starting(dt('2022-04-01T13:30')), 2))
+            self.assertEqual('{inc={months+=1}, subit=MonthWeekDays<sun=6>(+[], -[[], [0]])}', str(rec))
         finally:
             caltime.DEBUGPRINT = DEBUGPRINT_NONE
 
@@ -737,6 +741,7 @@ class TestRecurrence(unittest.TestCase):
                               dt('2022-05-15T00:00'),
                               ],
                              take(it.starting(dt('2022-04-01T13:30')), 2))
+            self.assertEqual('{inc={months+=1}, subit=MonthWeekDays<sun=6>(+[[], [], [], [6]], -[])}', str(rec))
         finally:
             caltime.DEBUGPRINT = DEBUGPRINT_NONE
 
@@ -806,6 +811,7 @@ class TestRecurrence(unittest.TestCase):
                               dt('2024-03-04T00:00'),
                               ],
                              take(it.starting(dt('2022-04-01T13:30')), 2))
+            self.assertEqual('{inc={years+=1}, subit=MonthWeekDays<sun=6>(+[[], [0]], -[])}', str(rec))
         finally:
             caltime.DEBUGPRINT = DEBUGPRINT_NONE
 
@@ -826,6 +832,7 @@ class TestRecurrence(unittest.TestCase):
                           dt('2023-07-20T00:00'),
                           ],
                          take(it.starting(dt('2022-04-01T13:30')), 2))
+        self.assertEqual('{spec=+1Y, inc={years+=1}}', str(rec))
 
     def test_weekstart_monday(self):
         # DTSTART:19970805T090000
@@ -846,6 +853,7 @@ class TestRecurrence(unittest.TestCase):
                               dt('1997-08-24T10:00'),
                               ],
                              take(it.all(), 5))
+            self.assertEqual('{inc=14 days, 0:00:00, subit=Weekdays<sun=6>[from=1+[0, 5]], count=4}', str(rec))
         finally:
             caltime.DEBUGPRINT = DEBUGPRINT_NONE
 
@@ -869,6 +877,7 @@ class TestRecurrence(unittest.TestCase):
                               dt('1997-08-31T10:00'),
                               ],
                              take(it.all(), 5))
+            self.assertEqual('{inc=14 days, 0:00:00, subit=Weekdays<sun=-1>[from=-1+[0, 2]], count=4}', str(rec))
         finally:
             caltime.DEBUGPRINT = DEBUGPRINT_NONE
 
@@ -895,7 +904,7 @@ class TestRecurrence(unittest.TestCase):
 
     # def test_cross_dst_boundary(self):
     #     '''DST messing things up again'''
-    #     raise Exception('FIXME')
+    #     raise Exception('FIXME') # should be working now but need test
 
 if __name__ == '__main__':
     unittest.main()

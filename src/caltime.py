@@ -55,6 +55,9 @@ class MonthIncrement(CalTimeIncrement):
         self.months = count
         assert(count >= 0)
 
+    def __str__(self):
+        return f'{{months+={self.months}}}'
+
     def __add__(self, caltime):
         # FIXME: optimise for larger counts
         c = self.months
@@ -78,6 +81,9 @@ class YearIncrement(MonthIncrement):
         # FIXME: optimise me
         super().__init__(count=0)
         self.months = count*12
+
+    def __str__(self):
+        return f'{{years+={self.months//12}}}'
 
 
 # Since ical supports week starts both for Sundays and Mondays, we have to
@@ -175,7 +181,7 @@ class CalTime(datetime):
                 ill_formed = True
 
             if not ill_formed:
-                return CalTime(year, month, day, hour, minute)
+                return CalTime(year, month, day, hour, minute).astimezone(None)
         raise Exception(f'Ill-formed CalTime({s})')
 
     @staticmethod
@@ -246,6 +252,9 @@ class WeekdaySubiterator(Subiterator):
         for days_after_first in self.day_increments:
             yield start + timedelta(days = days_after_first)
 
+    def __str__(self):
+        return f'Weekdays<sun={self.sunday()}>[from={self.first}+{self.day_increments}]'
+
 
 class MonthDaySubiterator(Subiterator):
     '''Specific day per month'''
@@ -264,6 +273,9 @@ class MonthDaySubiterator(Subiterator):
         for d in self.days:
             if d >= start.day and d <= last_monthday:
                 yield start + timedelta(days = d - start.day)
+
+    def __str__(self):
+        return f'MonthDays<sun={self.sunday()}>{self.days}'
 
 
 class MonthAndWeekdaySubiterator(MonthDaySubiterator):
@@ -350,6 +362,8 @@ class MonthAndWeekdaySubiterator(MonthDaySubiterator):
             if day > 0 and day <= last_monthday:
                 yield start + timedelta(days = offset)
 
+    def __str__(self):
+        return f'MonthWeekDays<sun={self.sunday()}>(+{self.pos_weekdays}, -{self.neg_weekdays})'
 
 DEBUGPRINT_NONE=lambda _:()
 DEBUGPRINT=DEBUGPRINT_NONE
@@ -377,8 +391,9 @@ class RecurrenceRange:
         return self._starting(self.start_date)
 
     def before_end(self, caltime):
+        '''"until" is inclusive, so it is technically before-or-equal the end'''
         caltime = caltime.astimezone(self.tzinfo)
-        return self.until is None or caltime.astimezone(self.tzinfo) < self.until
+        return self.until is None or caltime.astimezone(self.tzinfo) <= self.until
 
     def starting(self, start : CalTime):
         '''Returns an iterator over all CalTimes at or after 'start' '''
@@ -488,6 +503,14 @@ class Recurrence:
     def range_from(self, starttime : CalTime) -> RecurrenceRange:
         '''Constructs a RecurrenceRange that can retrieve all individual instances, given a start time/date'''
         return RecurrenceRange(starttime, self.increment, self.subiterator, count=self.count, until=self.until)
+
+    def __str__(self):
+        fields = [('spec', self.spec),
+                  ('inc', self.increment),
+                  ('subit', self.subiterator),
+                  ('until', None if self.until is None else repr(self.until)),
+                  ('count', None if self.count == 0 else self.count)]
+        return '{' + ', '.join(f'{n}={v}' for (n,v) in fields if v is not None) + '}'
 
     @staticmethod
     def evolution_rec_as_mock(rec):
