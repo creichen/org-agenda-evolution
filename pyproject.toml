@@ -1,0 +1,19 @@
+[project]
+name = "org-agenda-evolution"
+version = "0.0.1"
+dependencies = [
+    "gir1.2-ecalendar-1.2",
+    "gir1.2-ecal-2.0",
+    "orgparse",
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+exclude = ["test_*"]
+
+[project.scripts]
+org-agenda-evolution-sync = "main:main"

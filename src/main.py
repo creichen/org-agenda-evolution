@@ -9,9 +9,12 @@
 
 from __future__ import annotations
 
+import sys
+import io
 import gi
 import sys
-#import orgparse
+import orgparse
+import argparse
 from caltime import CalTime, Recurrence
 from tzresolve import TZResolver
 
@@ -35,9 +38,11 @@ RECURRENCE_EMIT_FUTURE_DAYS = 7
 '''Timezone to convert input into'''
 LOCAL_TIMEZONE=None # UTC
 '''Include one-time events earlier than today'''
-PAST_EVENTS=False
+PAST_EVENTS=True
 '''Header for output file'''
 OUTPUT_HEADER='#+STARTUP: content\n#+FILETAGS: :@calendar:\n'
+
+EMIT_DEBUG=True
 
 # TODO type markers
 TODO='TODO'
@@ -46,10 +51,21 @@ CANCELLED='CANCELLED'
 
 '''What status should the event status be translated to? (Default is the one for None)'''
 EVENT_STATUS_MAPPING = {
-    None                     : TODO,
-    'I_CAL_STATUS_CONFIRMED' : TODO,
-    'I_CAL_STATUS_CANCELLED' : CANCELLED,
-    'I_CAL_STATUS_NONE'      : TODO,
+    None                       : TODO,
+    'I_CAL_STATUS_CANCELLED'   : CANCELLED,
+    'I_CAL_STATUS_COMPLETED'   : DONE,
+    'I_CAL_STATUS_CONFIRMED'   : TODO,
+    'I_CAL_STATUS_DELETED'     : CANCELLED,
+    'I_CAL_STATUS_DRAFT'       : TODO,
+    'I_CAL_STATUS_FAILED'      : CANCELLED,
+    'I_CAL_STATUS_FINAL'       : TODO,
+    'I_CAL_STATUS_INPROCESS'   : TODO,
+    'I_CAL_STATUS_NEEDSACTION' : TODO,
+    'I_CAL_STATUS_NONE'        : TODO,
+    'I_CAL_STATUS_PENDING'     : TODO,
+    'I_CAL_STATUS_SUBMITTED'   : TODO,
+    'I_CAL_STATUS_TENTATIVE'   : TODO,
+    'I_CAL_STATUS_X'           : TODO,
 }
 
 def perr(*args, **kwargs):
@@ -70,6 +86,7 @@ class Event:
         self.last_modified_remote = None
         self.organizer = None
         self.evo_event = None
+        self.debuginfo = []
 
     @staticmethod
     def from_evolution(evo_event, tzresolver=None):
@@ -87,10 +104,18 @@ class Event:
             event.end = CalTime.from_evolution_cdt(evo_event.get_dtend(), tzresolver=tzresolver)
 
         if evo_event.get_last_modified():
-            event.end = CalTime.from_evolution(evo_event.get_last_modified(), tzresolver=tzresolver)
+            event.last_modified_remote = CalTime.from_evolution(evo_event.get_last_modified(), tzresolver=tzresolver)
 
         if evo_event.get_status() is not None:
-            event.status = EVENT_STATUS_MAPPING[evo_event.get_status().value_name]
+            key = evo_event.get_status().value_name
+            event.status = EVENT_STATUS_MAPPING[key]
+            event.debuginfo.append(('ORIGINAL-GET-STATUS', key))
+
+
+        if EMIT_DEBUG:
+            event.debuginfo.append(('ORIGINAL-GET-CATEGORIES', str(evo_event.get_categories_list())))
+            event.debuginfo.append(('AS-STR', str(evo_event.get_as_string())))
+            event.debuginfo.append(('ICAL', str(evo_event.get_icalcomponent())))
 
         if evo_event.has_organizer():
             event.organizer = evo_event.get_organizer().get_value()
@@ -101,9 +126,9 @@ class Event:
         event.description_remote = '\n'.join(d.get_value() for d in evo_event.get_descriptions())
 
         for rec in evo_event.get_rrules():
-            zzz = evo_event.get_dtstart().get_value()
-            tz = zzz.get_timezone()
-            tzoff = '-' if tz is None else tz.get_utc_offset()
+            # zzz = evo_event.get_dtstart().get_value()
+            # tz = zzz.get_timezone()
+            # tzoff = '-' if tz is None else tz.get_utc_offset()
             #print(f'## {start} {tz} {tzoff}')
             # print(name)
             # print(Recurrence.evolution_rec_as_mock(rec))
@@ -117,6 +142,18 @@ class Event:
                     event.description_remote = rrec
                 else:
                     event.description_remote = rrec + '\n' + event.description_remote
+
+        for exrule in evo_event.get_exrules():
+            perr('  -- exrule : %s : %s (%s)' % (exrule, type(exrule), dir(exrule)))
+            rexrule = Recurrence.from_evolution(exrule)
+            if type(rexrule) is Recurrence:
+                event.exceptions.append(rexrule)
+            elif type(rexrule) is str:
+                # Can't express directly, noting as string
+                if event.description_remote == '':
+                    event.description_remote = rrec
+                else:
+                    event.description_remote = 'Except: ' + rrec + '\n' + event.description_remote
 
         return event
 
@@ -251,9 +288,15 @@ class OrgUnparser:
         self.pr(f'  :CALENDAR-UID: {event.uid}')
         if start.tzinfo != LOCAL_TIMEZONE:
             self.pr(f'  :CONVERTED-FROM-TZID: {start.tzinfo}')
-        self.pr(f'  :ORIGINAL-START: {repr(event.start)}')
-        self.pr(f'  :ORIGINAL-END: {repr(event.end)}')
-        self.pr(f'  :ORIGINAL-RECURRENCES: {str(event.recurrences)}')
+
+        if EMIT_DEBUG:
+            self.pr(f'  :ORIGINAL-START: {repr(event.start)}')
+            self.pr(f'  :ORIGINAL-END: {repr(event.end)}')
+            sep = ', '
+            self.pr(f'  :ORIGINAL-RECURRENCES: {sep.join(str(e) for e in event.recurrences)}')
+            for k, v in event.debuginfo:
+                self.pr(f'  :{k}: {v}')
+
         self.pr('  :END:')
 
 
@@ -315,12 +358,32 @@ class OrgUnparser:
                         pass
 
 
-if __name__ == '__main__':
+def pull(orgfile_name):
+    buf = io.StringIO()
     events = EvolutionEvents()
-
-    import sys
-    unparser = OrgUnparser(sys.stdout)
-    unparser.print_header()
+    unparser = OrgUnparser(buf)
     for cal in events.calendars:
         unparser.unparse_calendar(cal)
+
+    with open(orgfile_name, 'w') as output:
+        output.write(buf.getvalue())
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Synchronise running Evolution server with Emacs org-agenda file (read-only, for now)')
+    parser.add_argument('orgfile', metavar='ORGFILE', type=str, help='Org file to write to or synchronise with')
+    parser.add_argument('--pull', '-p', action='store_const', dest='activity', const=pull, default=pull,
+                        help='Load from Evolution and overwrite org file (default)')
+    parser.add_argument('--debug', action='store_const', dest='conf_EMIT_DEBUG', const=True, default=False,
+                        help='Enable debug output (may not produce well-formed org files)')
+
+    args = parser.parse_args()
+    EMIT_DEBUG=args.conf_EMIT_DEBUG
+
+    args.activity(orgfile_name=args.orgfile)
+
+    # events = EvolutionEvents()
+    # unparser = OrgUnparser(sys.stdout)
+    # unparser.print_header()
+    # for cal in events.calendars:
+    #     unparser.unparse_calendar(cal)
 
