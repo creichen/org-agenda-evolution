@@ -405,9 +405,6 @@ class RecurrenceRange:
     def starting(self, start : CalTime):
         '''Returns an iterator over all CalTimes at or after 'start' '''
         start = start.astimezone(self.tzinfo)
-        if start == self.start_date:
-            for v in self._starting(start):
-                yield v
 
         # must skip to first valid date
         it = self._starting(self.start_date)
@@ -566,113 +563,13 @@ class Recurrence:
 
         return f'MockRecurrence("{freq}", {posargs})'
 
-    # @staticmethod
-    # def from_evolution(rec):
-    #     rec_unit = None if rec.get_freq() is None else EVENT_RECURRENCE_MAPPING[rec.get_freq().value_name]
-    #     if rec_unit is None:
-    #         return None
-
-    #     rec_factor = rec.get_interval()
-
-    #     by_seconds =   [n for n in rec.get_by_second_array() if n < 60]
-    #     by_minutes =   [n for n in rec.get_by_minute_array() if n < 60]
-    #     by_hours =     [n for n in rec.get_by_hour_array() if n < 24]
-    #     by_weekdays =  [n for n in rec.get_by_day_array() if n < 50] # including nth-week encoding
-    #     by_week_no =   [n for n in rec.get_by_week_no_array() if n < 54]
-    #     by_month_day = [n for n in rec.get_by_month_day_array() if n < 32]
-    #     by_year_day =  [n for n in rec.get_by_year_day_array() if n < 368]
-    #     by_set_pos =   [n for n in rec.get_by_set_pos_array() if n < 368] # No clear idea what this is
-
-    #     nonempty_periods = [b for b in [('seconds', by_seconds),
-    #                                     ('minutes', by_minutes),
-    #                                     ('hours', by_hours),
-    #                                     ('weekdays', by_weekdays),
-    #                                     ('week_no', by_week_no),
-    #                                     ('month-day', by_month_day),
-    #                                     ('year-day', by_year_day),
-    #                                     ('pos', by_set_pos)] if len(b[1]) > 0]
-
-    #     processed_periods = []
-    #     weekstart = rec.get_week_start().value_name
-    #     assert(weekstart in [I_CAL_MONDAY_WEEKDAY, I_CAL_SUNDAY_WEEKDAY])
-
-    #     spec = None
-    #     increment = None    # delta for 'outer loop' (for simple specs the only loop) in iterating over all dates
-    #     subiterator = None  # 'inner loop' spec (e.g., iterating over certain weekdays)
-
-    #     if rec_unit == Recur.SECOND:
-    #         return 'WARNING: Cannot use second-based repetition.'
-    #     elif rec_unit == Recur.MINUTE:
-    #         increment = timedelta(minutes = rec_factor)
-    #     elif rec_unit == Recur.HOUR:
-    #         increment = timedelta(hours = rec_factor)
-    #     elif rec_unit == Recur.DAY:
-    #         increment = timedelta(days = rec_factor)
-    #     elif rec_unit == Recur.WEEK:
-    #         if by_weekdays:
-    #             subiterator = WeekdaySubiterator(by_weekdays, weekstart=weekstart)
-
-    #         increment = timedelta(weeks = rec_factor)
-    #         processed_periods=[by_weekdays]
-    #     elif rec_unit in [Recur.MONTH, Recur.YEAR]: # Very similar recurrence handling
-    #         if by_weekdays and by_set_pos and len(by_weekdays) == len(by_set_pos):
-    #             subiterator = MonthAndWeekdaySubiterator([
-    #                 (by_set_pos[i], d)  for (i, d) in enumerate(by_weekdays)],
-    #                                                      weekstart=weekstart)
-    #             processed_periods=[by_set_pos, by_weekdays]
-    #         elif by_weekdays:
-    #             def decode(encoded_weekday):
-    #                 if encoded_weekday < 0:
-    #                     week = -1 # last week
-    #                     weekday = (-encoded_weekday) - 8
-    #                 else:
-    #                     week = encoded_weekday >> 3
-    #                     weekday = encoded_weekday & 0x7
-    #                 return (week, weekday)
-
-    #             subiterator = MonthAndWeekdaySubiterator([decode(wd) for wd in by_weekdays],
-    #                                                      weekstart=weekstart)
-    #             processed_periods=[by_weekdays]
-    #         elif by_month_day:
-    #             subiterator = MonthDaySubiterator(by_month_day, weekstart=weekstart)
-    #             processed_periods=[by_month_day]
-
-    #         if rec_unit == Recur.MONTH:
-    #             increment = MonthIncrement(rec_factor)
-    #         elif rec_unit == Recur.YEAR:
-    #             increment = YearIncrement(rec_factor)
-    #         else:
-    #             raise Exception('Impossible')
-    #     else:
-    #         raise Exception('Impossible')
-
-    #     if subiterator is None and rec.get_until() is None and rec.get_count() == 0: # Not complicated?
-    #         unit_enc = RECURRENCE_ENCODING[rec_unit]
-    #         spec = f'+{rec_factor}{unit_enc}'
-
-    #     overlooked_periods = []
-    #     for (nep_str, nep) in nonempty_periods:
-    #         found = False
-    #         for p in processed_periods:
-    #             if p is nep:
-    #                 found = True
-    #                 break
-    #         if not found:
-    #             overlooked_periods.append(nep_str + ' (' + ','.join(str(i) for i in nep) + ')')
-
-    #     if overlooked_periods:
-    #         #print(f'WARNING: Event repetition in {rec_unit} not completely handled due to ' + '; '.join(overlooked_periods))
-    #         return f'WARNING: Event repetition in {rec_unit} not completely handled due to ' + '; '.join(overlooked_periods)
-
-    #     return Recurrence(spec, increment, subiterator, until=CalTime.from_evolution(rec.get_until()), count=rec.get_count())
-
 
 class CalConverter:
     def __init__(self, tzresolver : TZresolver):
-        self.tzresolver = tzresolver
+        self._tzresolver = tzresolver
 
     def timezone(self, tz : string):
-        return self.tzresolver[tz]
+        return self._tzresolver[tz]
 
     def time_from_str(self, spec : str):
         timezone = None
@@ -690,7 +587,7 @@ class CalConverter:
         if t is None or t.is_null_time():
             return None
 
-        timezone = self.tzresolver[t.get_tzid()]
+        timezone = self.timezone(t.get_tzid())
 
         # This seems to always hold for me; not sure if it is universal?
         assert t.get_timezone() is None or t.get_timezone().get_utc_offset()[0] == 0
@@ -701,6 +598,8 @@ class CalConverter:
                        minute=t.get_minute(),
                        tzinfo=timezone)
 
+    def daily_recurrence(self, count=None):
+        return Recurrence(None, timedelta(days = 1), None, until = None, count = 0 if count is None else count)
 
     def recurrence_from_evolution(self, rec) -> Recurrence:
         '''Convert Evolution recurrence objects to caltime.Recurrence'''

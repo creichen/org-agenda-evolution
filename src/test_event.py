@@ -56,7 +56,79 @@ class TestMerge(unittest.TestCase):
                 self.assertTrue(n in m)
 
 
+cconv = caltime.CalConverter(tzresolve.TZResolver(None))
+
+def daily(count=None):
+    return cconv.daily_recurrence(count=count)
+
+def dt(s):
+    return cconv.time_from_str(s)
+
+def mk_event(evid, name, start, end, **args):
+    ev = EventRepeater(evid, name, start)
+    ev.end = end
+    for k, v in args.items():
+        setattr(ev, k, v)
+    return ev
+
+
 class TestEvent(unittest.TestCase):
 
-    def test_nothing(self):
-        pass
+    def test_nonrecur(self):
+        ev = mk_event('I0', 'Test',
+                      start=dt('2022-01-01T10:00/UTC'),
+                      end=dt(  '2022-01-01T11:00/UTC'),
+                      recurrences=[])
+
+        evs = list(ev.in_interval(start=None, end=dt('2022-01-03T15:00/UTC')))
+        self.assertEqual(1, len(evs))
+        seq_expected = 0
+        for e in evs:
+            seq_expected += 1
+            self.assertEqual(seq_expected, e.sequence_nr)
+            self.assertEqual('I0', e.event_id)
+            self.assertEqual('Test', e.name)
+            self.assertEqual(seq_expected, e.start.day)
+            self.assertEqual(seq_expected, e.end.day)
+            self.assertEqual(10, e.start.hour)
+            self.assertEqual(11, e.end.hour)
+
+    def test_recur_start_window(self):
+        ev = mk_event('I0', 'Test',
+                      start=dt('2022-01-01T10:00/UTC'),
+                      end=dt(  '2022-01-01T11:00/UTC'),
+                      recurrences=[daily()])
+
+        evs = list(ev.in_interval(start=None, end=dt('2022-01-03T15:00/UTC')))
+        self.assertEqual(3, len(evs))
+        seq_expected = 0
+        for e in evs:
+            seq_expected += 1
+            self.assertEqual(seq_expected, e.sequence_nr)
+            self.assertEqual('I0', e.event_id)
+            self.assertEqual('Test', e.name)
+            self.assertEqual(seq_expected, e.start.day)
+            self.assertEqual(seq_expected, e.end.day)
+            self.assertEqual(10, e.start.hour)
+            self.assertEqual(11, e.end.hour)
+
+    def test_recur_later_window(self):
+        ev = mk_event('I0', 'Test',
+                      start=dt('2022-01-01T10:00/UTC'),
+                      end=dt(  '2022-01-01T11:00/UTC'),
+                      recurrences=[daily(20)])
+
+        evs = list(ev.in_interval(start=dt('2022-01-17T00:00/UTC'), end=dt('2022-01-23T15:00/UTC')))
+        self.assertEqual(4, len(evs))
+
+        seq_expected = 16
+        for e in evs:
+            seq_expected += 1
+            self.assertEqual(seq_expected, e.sequence_nr)
+            self.assertEqual('I0', e.event_id)
+            self.assertEqual('Test', e.name)
+            self.assertEqual(seq_expected, e.start.day)
+            self.assertEqual(seq_expected, e.end.day)
+            self.assertEqual(10, e.start.hour)
+            self.assertEqual(11, e.end.hour)
+

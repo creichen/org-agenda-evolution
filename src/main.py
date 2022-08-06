@@ -16,7 +16,8 @@ import sys
 import orgparse
 import argparse
 from caltime import CalTime, CalConverter
-from event import Event, EventSet
+import event
+from event import EventSet
 from tzresolve import TZResolver
 
 gi.require_version('EDataServer', '1.2')
@@ -47,18 +48,6 @@ EMIT_DEBUG=True
 
 def perr(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
-
-
-class EventSet(dict):
-    '''A set of calendar events, indexed by their UIDs'''
-    def __init__(self):
-        super(dict, EventSet).__init__(self)
-
-    def add(self, event):
-        if event.uid in self:
-            self[event.uid].merge(event)
-        else:
-            self[event.uid] = event
 
 
 class EvolutionCalendar:
@@ -101,7 +90,7 @@ class EvolutionCalendar:
             cconverter = CalConverter(TZResolver(client))
             for v in values:
                 if v is not None:
-                    self._events.add(Event.from_evolution(v, cconveter=cconverter))
+                    self._events.add(event.from_evolution(v, cconveter=cconverter))
 
         return self._events
 
