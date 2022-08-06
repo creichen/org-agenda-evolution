@@ -194,8 +194,53 @@ class Event:
     def __repr__(self):
         return f'{self.__class__.__name__}({self.uid}, seq:{self.sequence_nr})'
 
+    def diff(self, other_event : Event) -> map[str, object]:
+        '''
+        Find differences between all event attributes.  Conflicts are reported as (False, (self_elt, other_elt)),
+        merges as (True, merged).
+        '''
+        output = {}
+        for prop in Event.PROPERTIES:
+            pself = getattr(self, prop)
+            pother = getattr(other_event, prop)
+            if pself == pother:
+                continue
+
+            v = (False, (pself, pother))
+
+            if pself is None or pself == '':
+                v = (True, pother)
+            elif pother is None or pother == '':
+                v = (True, pself)
+            elif pself != None and pother != None:
+                if isinstance(pself, MergeableEventProperty):
+                    v = (True, pself.merge(pother))
+            # Otherwise we have a proper conflict
+            output[prop] = v
+
+        return output
+
+    def merge(self, other) -> ProxyEvent:
+        '''
+        Tries to merge in another event.  If complete merging is not possible, create a field "conflict_event" that
+        contains "other".  Returns ProxyEvent with conflict_event set to either 'None' or "other".
+        '''
+        CONFLICT_EVENT = 'conflict_event'
+        updates = { CONFLICT_EVENT : None }
+        diffs = self.diff(other)
+
+        for k, v in diffs.items():
+            resolved, result = v
+            if not resolved:
+                updates[CONFLICT_EVENT] = other
+            else:
+                updates[k] = result
+        return ProxyEvent(self, self.sequence_nr, **updates)
+
+
 
 class ProxyEvent(Event):
+    '''Answer queries from base event, any changes are local'''
     def __init__(self, base_event, seq_nr, **overrides):
         super().__init__(base_event.event_id, seq_nr)
         self._base = base_event
@@ -225,8 +270,7 @@ class EventRepeater(Event):
     def __init__(self, event_id : str, name : str, start):
         super().__init__(event_id, None)
         self.name = name
-        self.description_local = ''
-        self.description_remote = ''
+        self.description = ''
         self.status = EVENT_STATUS_MAPPING[None]
         self.attendees = []
         self.start = start

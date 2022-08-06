@@ -71,6 +71,12 @@ def mk_event(evid, name, start, end, **args):
         setattr(ev, k, v)
     return ev
 
+def noswap(x, y):
+    return (x, y)
+
+def doswap(x, y):
+    return (y, x)
+
 
 class TestEvent(unittest.TestCase):
 
@@ -132,3 +138,50 @@ class TestEvent(unittest.TestCase):
             self.assertEqual(10, e.start.hour)
             self.assertEqual(11, e.end.hour)
 
+    def test_diff_trivial(self):
+        ev0 = mk_event('I0', 'Test',
+                       start=dt('2022-01-01T10:00/UTC'),
+                       end=dt(  '2022-01-01T11:00/UTC'),
+                       recurrences=[])
+
+        self.assertEqual({}, ev0.diff(ev0))
+
+    def test_diff_merge(self):
+        ev0 = mk_event('I0', 'Test',
+                       start=dt('2022-01-01T10:00/UTC'),
+                       end=dt(  '2022-01-01T11:00/UTC'),
+                       status=TODO,
+                       recurrences=[])
+
+        ev1 = mk_event('I0', 'Test',
+                       start=dt('2022-01-01T10:00/UTC'),
+                       end=dt(  '2022-01-01T11:00/UTC'),
+                       description='Potato salad',
+                       status=DONE,
+                       recurrences=[])
+
+        for el, er in [(ev0, ev1), (ev1, ev0)]:
+            diff = el.diff(er)
+            self.assertEqual((True, DONE), diff['status'])
+            self.assertEqual((True, 'Potato salad'), diff['description'])
+            self.assertEqual(2, len(diff))
+
+    def test_diff_conflict(self):
+        ev0 = mk_event('I0', 'Test',
+                       start=dt('2022-01-01T10:00/UTC'),
+                       end=dt(  '2022-01-01T11:00/UTC'),
+                       description='A',
+                       status=TODO,
+                       recurrences=[])
+
+        ev1 = mk_event('I0', 'Test',
+                       start=dt('2022-01-01T10:00/UTC'),
+                       end=dt(  '2022-01-01T11:00/UTC'),
+                       description='B',
+                       status=TODO,
+                       recurrences=[])
+
+        for el, er, swap_if_needed in [(ev0, ev1, noswap), (ev1, ev0, doswap)]:
+            diff = el.diff(er)
+            self.assertEqual((False, swap_if_needed("A", "B")), diff['description'])
+            self.assertEqual(1, len(diff))
