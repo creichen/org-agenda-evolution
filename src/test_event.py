@@ -150,13 +150,13 @@ class TestEvent(unittest.TestCase):
         ev0 = mk_event('I0', 'Test',
                        start=dt('2022-01-01T10:00/UTC'),
                        end=dt(  '2022-01-01T11:00/UTC'),
+                       description='Potato salad',
                        status=TODO,
                        recurrences=[])
 
         ev1 = mk_event('I0', 'Test',
                        start=dt('2022-01-01T10:00/UTC'),
                        end=dt(  '2022-01-01T11:00/UTC'),
-                       description='Potato salad',
                        status=DONE,
                        recurrences=[])
 
@@ -185,3 +185,63 @@ class TestEvent(unittest.TestCase):
             diff = el.diff(er)
             self.assertEqual((False, swap_if_needed("A", "B")), diff['description'])
             self.assertEqual(1, len(diff))
+
+    def test_merge_trivial(self):
+        ev0 = mk_event('I0', 'Test',
+                       start=dt('2022-01-01T10:00/UTC'),
+                       end=dt(  '2022-01-01T11:00/UTC'),
+                       recurrences=[])
+
+        m = ev0.merge(ev0)
+        self.assertEqual(None, m.get_conflict_event())
+        self.assertEqual(dt('2022-01-01T10:00/UTC'), m.start)
+        self.assertEqual(dt('2022-01-01T11:00/UTC'), m.end)
+        self.assertEqual('I0', m.event_id)
+        self.assertEqual('Test', m.name)
+
+    def test_merge_merge(self):
+        ev0 = mk_event('I0', 'Test',
+                       start=dt('2022-01-01T10:00/UTC'),
+                       end=dt(  '2022-01-01T11:00/UTC'),
+                       description='Potato salad',
+                       status=TODO,
+                       recurrences=[])
+
+        ev1 = mk_event('I0', 'Test',
+                       start=dt('2022-01-01T10:00/UTC'),
+                       end=dt(  '2022-01-01T11:00/UTC'),
+                       status=DONE,
+                       recurrences=[])
+
+        m = ev0.merge(ev1)
+        self.assertEqual(None, m.get_conflict_event())
+        self.assertEqual(dt('2022-01-01T10:00/UTC'), m.start)
+        self.assertEqual(dt('2022-01-01T11:00/UTC'), m.end)
+        self.assertEqual('I0', m.event_id)
+        self.assertEqual('Test', m.name)
+        self.assertEqual('Potato salad', m.description)
+        self.assertEqual(DONE, m.status)
+
+    def test_merge_conflict(self):
+        ev0 = mk_event('I0', 'Test',
+                       start=dt('2022-01-01T10:00/UTC'),
+                       end=dt(  '2022-01-01T11:00/UTC'),
+                       description='A',
+                       status=TODO,
+                       recurrences=[])
+
+        ev1 = mk_event('I0', 'Test',
+                       start=dt('2022-01-01T10:00/UTC'),
+                       end=dt(  '2022-01-01T11:00/UTC'),
+                       description='B',
+                       status=DONE,
+                       recurrences=[])
+
+        m = ev0.merge(ev1)
+        self.assertEqual(dt('2022-01-01T10:00/UTC'), m.start)
+        self.assertEqual(dt('2022-01-01T11:00/UTC'), m.end)
+        self.assertEqual('I0', m.event_id)
+        self.assertEqual('Test', m.name)
+        self.assertEqual('A', m.description)
+        self.assertEqual(DONE, m.status)
+        self.assertIs(ev1, m.get_conflict_event())

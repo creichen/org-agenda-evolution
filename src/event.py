@@ -177,6 +177,9 @@ class Event:
         self._event_id = event_id
         self._sequence_nr = sequence_nr
 
+    def get_conflict_event(self):
+        return None
+
     @property
     def event_id(self):
         return self._event_id
@@ -222,30 +225,33 @@ class Event:
 
     def merge(self, other) -> ProxyEvent:
         '''
-        Tries to merge in another event.  If complete merging is not possible, create a field "conflict_event" that
-        contains "other".  Returns ProxyEvent with conflict_event set to either 'None' or "other".
+        Tries to merge in another event.  If complete merging is not possible, set up "get_conflict_event()"
+        to return "other".  Returns ProxyEvent with conflict_event set to either 'None' or "other".
         '''
-        CONFLICT_EVENT = 'conflict_event'
-        updates = { CONFLICT_EVENT : None }
+        conflict_event = None
+        updates = { }
         diffs = self.diff(other)
 
         for k, v in diffs.items():
             resolved, result = v
             if not resolved:
-                updates[CONFLICT_EVENT] = other
+                conflict_event = other
             else:
                 updates[k] = result
-        return ProxyEvent(self, self.sequence_nr, **updates)
-
+        return ProxyEvent(self, self.sequence_nr, conflict_event=conflict_event, **updates)
 
 
 class ProxyEvent(Event):
     '''Answer queries from base event, any changes are local'''
-    def __init__(self, base_event, seq_nr, **overrides):
+    def __init__(self, base_event, seq_nr, conflict_event=None, **overrides):
         super().__init__(base_event.event_id, seq_nr)
         self._base = base_event
         self._seq_nr = seq_nr
         self._overrides = overrides
+        self._conflict_event = conflict_event
+
+    def get_conflict_event(self):
+        return self._conflict_event
 
     def __getattr__(self, attrname):
         if attrname[0] == '_':
