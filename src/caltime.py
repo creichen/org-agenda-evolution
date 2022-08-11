@@ -96,18 +96,14 @@ class CalTime(datetime):
     # We default to the standard datetime mapping (WEEKSTART_MON):
     WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
-    def __new__(cls, year, month=None, day=None, hour=0, minute=0, second=0, microsecond=0, tzinfo=None):
-        if type(year) is datetime:
-            dt = year
-            assert(month == None)
-            assert(day == None)
-            assert(hour == None)
-            assert(minute == None)
-            assert(second == None)
-            assert(microsecond == None)
-            return super().__new__(cls, dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, dt.microsecond, dt.tzinfo)
-        else:
-            return super().__new__(cls, year, month, day, hour, minute, second, microsecond, tzinfo)
+    def __new__(cls, year=None, month=None, day=None, hour=0, minute=0, second=0, microsecond=0, tzinfo=None):
+        return super().__new__(cls, year, month, day, hour, minute, second, microsecond, tzinfo)
+
+    @staticmethod
+    def from_datetime(dt, tzinfo=None):
+        if tzinfo is None:
+            tzinfo = dt.tzinfo
+        return CalTime(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, dt.microsecond, tzinfo)
 
     def weekday_str(self):
         return CalTime.WEEKDAYS[self.weekday(WEEKSTART_MON)]
@@ -153,12 +149,16 @@ class CalTime(datetime):
             year += 1
         return (CalTime(year, dm, 1) - timedelta(days = 1)).day
 
-    def timespec(self, repetition=None):
+    def timespec(self, repetition=None, untiltime=None):
         if repetition is None:
             repstr = ''
         else:
             repstr = f' {repetition.org_agenda_spec}'
-        return f'<{self.date_str()} {self.time_str()}{repstr}>'
+        if untiltime is None:
+            untiltime = ''
+        else:
+            untiltime = '-' + untiltime.time_str()
+        return f'<{self.date_str()} {self.time_str()}{untiltime}{repstr}>'
 
     def __repr__(self):
         return self.date_str().replace(' ', ':') + ':' + self.time_str() + ('' if self.tzinfo is None else f'/{self.tzinfo}')

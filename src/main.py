@@ -13,10 +13,10 @@ import sys
 import io
 import gi
 import sys
-import orgparse
 import argparse
 from caltime import CalTime, CalConverter
 import event
+import org_events
 from event import EventSet
 from tzresolve import TZResolver
 
@@ -32,19 +32,6 @@ WAIT_TO_CONNECT_SECS = 5
 '''sexp filter for events; "#t" finds all events'''
 EVENT_FILTER_SEXP = '#t'
 '''Name that we fill in for events whose name/summary is empty'''
-EMPTY_EVENT_NAME = '(nameless event)'
-'''Use org-agenda repetition ("+1w" etc.) to avoid duplicating events, if possible'''
-ORG_AGENDA_NATIVE_RECURRENCE_ALLOWED = True
-'''When emitting recurring events, generate events from today to this many days in the future:'''
-RECURRENCE_EMIT_FUTURE_DAYS = 7
-'''Timezone to convert input into'''
-LOCAL_TIMEZONE=None # UTC
-'''Include one-time events earlier than today'''
-PAST_EVENTS=True
-'''Header for output file'''
-OUTPUT_HEADER='#+STARTUP: content\n#+FILETAGS: :@calendar:\n'
-
-EMIT_DEBUG=True
 
 def perr(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
@@ -121,114 +108,11 @@ class EvolutionEvents:
         return self._calendars
 
 
-class OrgUnparser:
-    def __init__(self, file):
-        self.f = file
-
-    def print_header(self):
-        if OUTPUT_HEADER:
-            self.pr(OUTPUT_HEADER)
-
-    def pr(self, *args):
-        print(*args, file=self.f)
-
-    def unparse_timespec_recurrence(self, recurrence, start, end):
-        start = start.astimezone(LOCAL_TIMEZONE)
-        if end is None:
-            return f'{start.timespec(recurrence)}'
-        end = end.astimezone(LOCAL_TIMEZONE)
-        return f'{start.timespec(recurrence)}--{end.timespec(recurrence)}'
-
-    def unparse_event(self, event, recur_spec=None, start=None, end=None):
-        if start is None:
-            start = event.start
-        if end is None:
-            end = event.end
-
-        self.pr(f'** {event.status_str} {event.name}')
-        timespec = self.unparse_timespec_recurrence(recur_spec, start, end)
-        self.pr(f'  SCHEDULED: {timespec}')
-
-        self.pr('  :PROPERTIES:')
-        if event.attendees:
-            self.pr(f'  :ATTENDEES: ' + ' '.join(event.attendees))
-        self.pr(f'  :CALENDAR-UID: {event.uid}')
-        if start.tzinfo != LOCAL_TIMEZONE:
-            self.pr(f'  :CONVERTED-FROM-TZID: {start.tzinfo}')
-
-        if EMIT_DEBUG:
-            self.pr(f'  :ORIGINAL-START: {repr(event.start)}')
-            self.pr(f'  :ORIGINAL-END: {repr(event.end)}')
-            sep = ', '
-            self.pr(f'  :ORIGINAL-RECURRENCES: {sep.join(str(e) for e in event.recurrences)}')
-            for k, v in event.debuginfo:
-                self.pr(f'  :{k}: {v}')
-
-        self.pr('  :END:')
-
-
-        def prdescription(description):
-            for s in description.split('\n'):
-                if s.startswith('*'):
-                    self.pr(' ', s)
-                else:
-                    self.pr(s)
-
-        if not event.description_remote:
-            if event.description_local:
-                prdescription(event.description_local)
-        elif not event.description_local or event.description_local == event.description_remote:
-            prdescription(event.description_remote)
-        else:
-            # have both remote and local, and they differ!
-            self.pr('*** Local description')
-            prdescription(event.description_local)
-            self.pr('*** Remote calendar description')
-            prdescription(event.description_remote)
-
-    def unparse_calendar(self, calendar : EvolutionCalendar):
-        today = CalTime.today(LOCAL_TIMEZONE)
-
-        self.pr(f'* {calendar.name}')
-        for event in calendar.events.values():
-            if not event.recurrences:
-                # Only one event, non-recurring
-                if PAST_EVENTS or event.end.astimezone(LOCAL_TIMEZONE) > today:
-                    self.unparse_event(event)
-            for recurrence in event.recurrences:
-                if recurrence.spec and ORG_NATIVE_RECURRENCE_ALLOWED:
-                    # org can express the recurrence natively?
-                    self.unparse_event(event, recur_spec=recurrence.spec)
-                else:
-                    # Repeat by hand
-                    start_recur = recurrence.range_from(event.start).starting(today)
-                    end_recur = None
-                    end = None
-
-                    try:
-                        for start in start_recur:
-                            # Since we don't have a means to initialise by recurrence count right now,
-                            # instead use the first recurrence of "end" at or after "start", which should
-                            # always be the right one
-                            if end_recur is None and event.end:
-                                end_recur = recurrence.range_from(event.end).starting(start)
-
-                            if (start.astimezone(LOCAL_TIMEZONE) - today).days > RECURRENCE_EMIT_FUTURE_DAYS:
-                                # Far enough into the future
-                                break
-
-                            if end_recur:
-                                end = end_recur.__next__()
-                            self.unparse_event(event, start=start, end=end)
-
-                    except StopIteration:
-                        pass
-
-
 def pull(orgfile_name):
+    '''Get and write events'''
     buf = io.StringIO()
     events = EvolutionEvents()
-    unparser = OrgUnparser(buf)
+    unparser = org_events.OrgEventUnparser(buf)
     for cal in events.calendars:
         unparser.unparse_calendar(cal)
 

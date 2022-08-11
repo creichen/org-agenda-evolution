@@ -22,8 +22,13 @@ class MergeableEventProperty:
 
 class EventState(MergeableEventProperty):
     '''TODO state'''
+
+    STATES = {}
+
     def __init__(self, name : str):
         self.name = name
+        assert name not in EventState.STATES
+        EventState.STATES[name] = self
 
     def merge(self, other : EventState) -> EventState:
         if self == other:
@@ -48,6 +53,13 @@ class EventState(MergeableEventProperty):
 
     def __repr__(self):
         return self.name
+
+    @staticmethod
+    def get(s):
+        assert(s is not None)
+        if s not in EventState.STATES:
+            return EventState(s)
+        return EventState.STATES[s]
 
 
 class EventStringList(list, MergeableEventProperty):
@@ -96,7 +108,7 @@ def from_evolution(evo_event, cconverter : CalConverter) -> EventRepeater:
     name = evo_event.get_summary()
     name = EMPTY_EVENT_NAME if name is None else name.get_value()
     start = cconverter.time_from_evolution(evo_event.get_dtstart())
-    event = CalEvent(evo_event.get_id().get_uid(), name, start)
+    event = EventRepeater(evo_event.get_id().get_uid(), name, start)
 
     event.evo_event = evo_event
 
@@ -118,6 +130,9 @@ def from_evolution(evo_event, cconverter : CalConverter) -> EventRepeater:
         event.debuginfo.append(('ORIGINAL-GET-CATEGORIES', str(evo_event.get_categories_list())))
         event.debuginfo.append(('AS-STR', str(evo_event.get_as_string())))
         event.debuginfo.append(('ICAL', str(evo_event.get_icalcomponent())))
+
+    if evo_event.get_location():
+        event.location = evo_event.get_location().get_value()
 
     if evo_event.has_organizer():
         event.organizer = evo_event.get_organizer().get_value()
@@ -162,6 +177,7 @@ class Event:
     PROPERTIES = {
         'name'                 : (str, '(event)'),
         'description'          : (str, ''),
+        'location'             : (str, ''),
         'status'               : (EventState, TODO),
         'attendees'            : (EventStringList, EventStringList()),
         'start'                : (CalTime, None),
@@ -195,7 +211,7 @@ class Event:
         return repr(self)
 
     def __repr__(self):
-        return f'{self.__class__.__name__}({self.uid}, seq:{self.sequence_nr})'
+        return f'{self.__class__.__name__}({self.event_id}, seq:{self.sequence_nr})'
 
     def diff(self, other_event : Event) -> map[str, object]:
         '''
@@ -277,6 +293,7 @@ class EventRepeater(Event):
         super().__init__(event_id, None)
         self.name = name
         self.description = ''
+        self.location = ''
         self.status = EVENT_STATUS_MAPPING[None]
         self.attendees = []
         self.start = start
@@ -325,14 +342,14 @@ class EventRepeater(Event):
 
 class CalEvent(Event):
     '''A calendar event that may contain one or more event occurrences'''
-    def __init__(self, uid : str, name : str, start):
-        super().__init__(uid, name, start)
+    def __init__(self, uid : str):
+        super().__init__(uid, None)
         self.occurrences : list[Event] = [] # Only for "top-level events": Sequence IDs
 
 
 class EventOccurrence(Event):
-    def __init__(self, uid : str, name : str, start):
-        super().__init__(uid, name, start)
+    def __init__(self, uid : str):
+        super().__init__(uid, None)
 
     @property
     def recurrences(self):
@@ -342,14 +359,14 @@ class EventOccurrence(Event):
 # ----------------------------------------
 # EventSet
 class EventSet(dict):
-    '''A set of calendar events, indexed by their UIDs'''
+    '''A set of calendar events, indexed by their event IDs'''
     def __init__(self):
         super(dict, EventSet).__init__(self)
 
     def add(self, event):
-        if event.uid in self:
-            self[event.uid].merge(event)
+        if event.event_id in self:
+            self[event.event_id].merge(event)
         else:
-            self[event.uid] = event
+            self[event.event_id] = event
 
 
