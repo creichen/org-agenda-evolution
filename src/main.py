@@ -121,7 +121,7 @@ class EvolutionEvents:
         return self._calendars
 
 
-def pull(orgfile_name):
+def fetch(orgfile_name):
     '''Get and write events'''
     buf = io.StringIO()
     events = EvolutionEvents()
@@ -136,8 +136,8 @@ def update(orgfile_name):
     buf = io.StringIO()
     events = EvolutionEvents()
 
-    parse = OrgEventParser()
-    local_cals = parse.load(orgfile_naem)
+    parse = org_events.OrgEventParser()
+    local_cals = parse.load(orgfile_name)
     remote_cals = events.calendars
 
     merged_cals = local_cals.merge(remote_cals)
@@ -152,9 +152,9 @@ def update(orgfile_name):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Synchronise running Evolution server with Emacs org-agenda file (read-only, for now)')
     parser.add_argument('orgfile', metavar='ORGFILE', type=str, help='Org file to write to or synchronise with')
-    parser.add_argument('--pull', '-p', action='store_const', dest='activity', const=pull, default=pull,
+    parser.add_argument('--fetch', '-F', action='store_const', dest='activity', const=fetch, default=fetch,
                         help='Load from Evolution and overwrite org file (default)')
-    parser.add_argument('--update', '-u', action='store_const', dest='activity', const=update, default=pull,
+    parser.add_argument('--update', '-U', action='store_const', dest='activity', const=update, default=fetch,
                         help='Load from Evolution and merge with existing org file (experimental)')
     parser.add_argument('--debug', action='store_const', dest='conf_EMIT_DEBUG', const=True, default=False,
                         help='Enable debug output (may not produce well-formed org files)')

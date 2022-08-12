@@ -14,6 +14,7 @@ DONE_STR='DONE'
 CANCELLED_STR='CANCELLED'
 
 EMIT_DEBUG=False
+EMIT_CONFLICT_DEBUG=True
 
 def perr(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
@@ -144,7 +145,7 @@ def from_evolution(evo_event, cconverter : CalConverter) -> EventRepeater:
         event.organizer = evo_event.get_organizer().get_value()
 
     # Also potentially interesting: attendee.get_rsvp() : bool
-    event.attendees = [attendee.get_value() for attendee in evo_event.get_attendees()]
+    event.attendees = sorted([attendee.get_value() for attendee in evo_event.get_attendees()])
 
     event.description_remote = '\n'.join(d.get_value() for d in evo_event.get_descriptions())
 
@@ -189,7 +190,7 @@ class Event:
         'start'                : (CalTime, None),
         'end'                  : (CalTime, None),
         'recurrences'          : (list[Recurrence], []),
-        'last_modified_remote' : (Optional[CalTime], None),
+        'last_modified_remote' : (CalTime, None),
         'organizer'            : (Optional[str], None),
         'evo_event'            : (object, None),
         'debuginfo'            : (list[str], []),
@@ -237,6 +238,9 @@ class Event:
             if proptype is str and pself is not None and pother is not None:
                 if pself.strip() == pother.strip():
                     continue
+            elif proptype is CalTime and pself is not None and pother is not None:
+                if pself.equivalent(pother):
+                    continue
             else:
                 if pself == pother:
                     continue
@@ -255,7 +259,7 @@ class Event:
 
         return output
 
-    def merge(self, other) -> ProxyEvent:
+    def merge(self, other, explain_conflicts=True) -> ProxyEvent:
         '''
         Tries to merge in another event.  If complete merging is not possible, set up "get_conflict_event()"
         to return "other".  Returns ProxyEvent with conflict_event set to either 'None' or "other".
@@ -264,12 +268,31 @@ class Event:
         updates = { }
         diffs = self.diff(other)
 
+        if 'debuginfo' in diffs:
+            del diffs['debuginfo']
+
         for k, v in diffs.items():
             resolved, result = v
             if not resolved:
                 conflict_event = other
             else:
                 updates[k] = result
+
+        if conflict_event and explain_conflicts:
+            conflict_event = ProxyEvent(conflict_event, conflict_event.sequence_nr)
+            b = conflict_event.description
+            if b is None:
+                b = ''
+            b += ('\nLocal/remote calendar Conflict:\n')
+            for k, v in diffs.items():
+                resolved, result = v
+                if not resolved:
+                    suffix = ''
+                    if EMIT_CONFLICT_DEBUG:
+                        suffix = f': "{result[0]}" vs "{result[1]}"'
+                    b += (f'- {k}{suffix}\n')
+            conflict_event.description = b
+
         return ProxyEvent(self, self.sequence_nr, conflict_event=conflict_event, **updates)
 
 
@@ -299,7 +322,8 @@ class ProxyEvent(Event):
 
         if attrname in Event.PROPERTIES.keys():
             self._overrides[attrname] = v
-        return setattr(super(), attrname, v)
+        else:
+            raise Exception('Invalid field: {attrname}')
 
 
 class EventRepeater(Event):

@@ -237,7 +237,7 @@ class TestEvent(unittest.TestCase):
                        status=DONE,
                        recurrences=[])
 
-        m = ev0.merge(ev1)
+        m = ev0.merge(ev1, explain_conflicts=False)
         self.assertEqual(dt('2022-01-01T10:00/UTC'), m.start)
         self.assertEqual(dt('2022-01-01T11:00/UTC'), m.end)
         self.assertEqual('I0', m.event_id)

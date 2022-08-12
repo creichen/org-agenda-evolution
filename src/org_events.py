@@ -11,6 +11,7 @@ import event
 from event import EventSet, MergingDict
 from tzresolve import TZResolver
 from zoneinfo import ZoneInfo
+from datetime import timedelta, datetime
 
 EMPTY_EVENT_NAME = event.EMPTY_EVENT_NAME
 '''Use org-agenda repetition ("+1w" etc.) to avoid duplicating events, if possible'''
@@ -88,10 +89,17 @@ class OrgEventUnparser(OrgProc):
         if end is None:
             return f'{start.timespec(recurrence)}'
         end = end.astimezone(self.local_timezone)
+
+
         if (start.year, start.month, start.day) == (end.year, end.month, end.day):
             return f'{start.timespec(recurrence, untiltime=end)}'
-        else:
-            return f'{start.timespec(recurrence)}--{end.timespec(recurrence)}'
+        elif (start.hour, start.minute, end.hour, end.minute) == (0, 0, 0, 0): # typical for 24h events
+            start_plus1 = start + timedelta(days=1)
+            if (start_plus1.year, start_plus1.month, start_plus1.day) == (end.year, end.month, end.day):
+                # We mark 24h events as events that start at 00:00 and have no end time
+                return f'{start.timespec(recurrence)}'
+
+        return f'{start.timespec(recurrence)}--{end.timespec(recurrence)}'
 
     def unparse_event(self, event, recur_spec=None, start=None, end=None, depth='**', conflict_marker=None):
         if start is None:
@@ -220,7 +228,7 @@ class OrgEventParser(OrgProc):
         return orgparse.OrgEnv(todos=TODOS, dones=DONES, filename=filename)
 
     def load(self, file):
-        return self.translate(orgparse.load(file, env=self.org_env(filename)))
+        return self.translate(orgparse.load(file, env=self.org_env(file)))
 
     def loads(self, str):
         return self.translate(orgparse.loads(str, env=self.org_env('<string>')))
@@ -247,8 +255,17 @@ class OrgEventParser(OrgProc):
         ev.name = orgev.heading
         ev.status = event.EventState.get(str(orgev.todo))
         ev.start = self.translate_datetime(orgev.scheduled.start)
-        ev.end = self.translate_datetime(orgev.scheduled.end)
+        if orgev.scheduled.end:
+            ev.end = self.translate_datetime(orgev.scheduled.end)
+        else:
+            # no end set?
+            if (ev.start.hour, ev.start.minute) == (0, 0):
+                # 24h event
+                ev.end = ev.start + timedelta(days=1)
+            else:
+                ev.end = ev.start
         ev.description = orgev.body
-        ev.attendees = orgev.get_property(OrgProc.ATTENDEES)
+        attendees = orgev.get_property(OrgProc.ATTENDEES)
+        ev.attendees = sorted([s.strip() for s in attendees.split(' ')]) if attendees else []
         ev.location = orgev.get_property(OrgProc.LOCATION)
         return ev

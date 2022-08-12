@@ -174,6 +174,9 @@ class CalTime(datetime):
     def __repr__(self):
         return self.date_str().replace(' ', ':') + ':' + self.time_str() + ('' if self.tzinfo is None else f'/{self.tzinfo}')
 
+    def equivalent(self, other):
+        return self == other.astimezone(self.tzinfo)
+
     @staticmethod
     def from_str(s, tzinfo=None):
         splits = s.split('T')

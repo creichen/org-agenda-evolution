@@ -76,7 +76,7 @@ class TestUnparse(unittest.TestCase):
                        status=event.DONE,
                        recurrences=[])
 
-        ev = ev0.merge(ev1)
+        ev = ev0.merge(ev1, explain_conflicts=False)
         ugen = self.mk_unparser(today=dt('2022-01-01'))
         oup, getstr = ugen()
         oup.unparse_event(ev)
