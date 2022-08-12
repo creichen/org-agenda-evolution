@@ -17,7 +17,7 @@ import argparse
 from caltime import CalTime, CalConverter
 import event
 import org_events
-from event import EventSet
+from event import EventSet, MergingDict
 from tzresolve import TZResolver
 
 gi.require_version('EDataServer', '1.2')
@@ -44,6 +44,11 @@ class EvolutionCalendar:
         self._evocalendar = evocalendar
         self._cancellable = gio_cancellable
         self._events = None
+        self._uid = evocalendar.get_uid()
+
+    @property
+    def uid(self):
+        return self._uid
 
     @property
     def evocal(self):
@@ -77,9 +82,13 @@ class EvolutionCalendar:
             cconverter = CalConverter(TZResolver(client))
             for v in values:
                 if v is not None:
-                    self._events.add(event.from_evolution(v, cconveter=cconverter))
+                    self._events.add(event.from_evolution(v, cconverter=cconverter))
 
         return self._events
+
+    def merge(self, other):
+        oc = org_events.OrgCalendar(self.name, self.uid, self.events)
+        return oc.merge(other)
 
 
 class EvolutionEvents:
@@ -103,8 +112,12 @@ class EvolutionEvents:
         if self._calendars == None:
             reg_sync = EDataServer.SourceRegistry.new_sync(self._cancellable)
             calendars = EDataServer.SourceRegistry.list_sources(reg_sync, EDataServer.SOURCE_EXTENSION_CALENDAR)
-            # reuse cancellation stack
-            self._calendars = [EvolutionCalendar(c, self._cancellable) for c in calendars]
+
+            self._calendars = MergingDict()
+            for c in calendars:
+                # reuse cancellation stack
+                self._calendars[c.get_uid()] = EvolutionCalendar(c, self._cancellable)
+
         return self._calendars
 
 
@@ -113,17 +126,36 @@ def pull(orgfile_name):
     buf = io.StringIO()
     events = EvolutionEvents()
     unparser = org_events.OrgEventUnparser(buf)
-    for cal in events.calendars:
-        unparser.unparse_calendar(cal)
+    unparser.unparse_all(events.calendars)
 
     with open(orgfile_name, 'w') as output:
         output.write(buf.getvalue())
+
+def update(orgfile_name):
+    '''Get and write events'''
+    buf = io.StringIO()
+    events = EvolutionEvents()
+
+    parse = OrgEventParser()
+    local_cals = parse.load(orgfile_naem)
+    remote_cals = events.calendars
+
+    merged_cals = local_cals.merge(remote_cals)
+
+    unparser = org_events.OrgEventUnparser(buf)
+    unparser.unparse_all(merged_cals)
+
+    with open(orgfile_name, 'w') as output:
+        output.write(buf.getvalue())
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Synchronise running Evolution server with Emacs org-agenda file (read-only, for now)')
     parser.add_argument('orgfile', metavar='ORGFILE', type=str, help='Org file to write to or synchronise with')
     parser.add_argument('--pull', '-p', action='store_const', dest='activity', const=pull, default=pull,
                         help='Load from Evolution and overwrite org file (default)')
+    parser.add_argument('--update', '-u', action='store_const', dest='activity', const=update, default=pull,
+                        help='Load from Evolution and merge with existing org file (experimental)')
     parser.add_argument('--debug', action='store_const', dest='conf_EMIT_DEBUG', const=True, default=False,
                         help='Enable debug output (may not produce well-formed org files)')
 

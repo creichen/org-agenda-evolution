@@ -8,11 +8,11 @@ import orgparse
 import argparse
 from caltime import CalTime, CalConverter
 import event
-from event import EventSet
+from event import EventSet, MergingDict
 from tzresolve import TZResolver
 from zoneinfo import ZoneInfo
 
-EMPTY_EVENT_NAME = '(nameless event)'
+EMPTY_EVENT_NAME = event.EMPTY_EVENT_NAME
 '''Use org-agenda repetition ("+1w" etc.) to avoid duplicating events, if possible'''
 ORG_AGENDA_NATIVE_RECURRENCE_ALLOWED = True
 '''When emitting recurring events, generate events from today to this many days in the future:'''
@@ -24,7 +24,12 @@ PAST_EVENTS=True
 '''Header for output file'''
 OUTPUT_HEADER='#+STARTUP: content\n#+FILETAGS: :@calendar:\n'
 
-EMIT_DEBUG=True
+EMIT_DEBUG=event.EMIT_DEBUG
+
+
+TODOS=[event.TODO_STR, 'WAITING']
+DONES=[event.DONE_STR, event.CANCELLED_STR]
+
 
 def perr(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
@@ -36,6 +41,8 @@ class OrgProc:
     ATTENDEES = 'ATTENDEES'
     LOCATION = 'LOCATION'
     EVENT_UID = 'CALEVENT-UID'
+
+    CONFLICT_HEADING = '!CONFLICT!' # extra string added to heading of conflicts
 
     def __init__(self,
                  output_header=OUTPUT_HEADER,
@@ -71,6 +78,11 @@ class OrgEventUnparser(OrgProc):
     def pr(self, *args):
         print(*args, file=self.f)
 
+    def unparse_all(self, caldict : MergingDict):
+        self.print_header()
+        for cal in caldict.values():
+            self.unparse_calendar(cal)
+
     def unparse_timespec_recurrence(self, recurrence, start, end):
         start = start.astimezone(self.local_timezone)
         if end is None:
@@ -81,13 +93,15 @@ class OrgEventUnparser(OrgProc):
         else:
             return f'{start.timespec(recurrence)}--{end.timespec(recurrence)}'
 
-    def unparse_event(self, event, recur_spec=None, start=None, end=None):
+    def unparse_event(self, event, recur_spec=None, start=None, end=None, depth='**', conflict_marker=None):
         if start is None:
             start = event.start
         if end is None:
             end = event.end
 
-        self.pr(f'** {event.status} {event.name}')
+        conflict = '' if conflict_marker is None else f'{conflict_marker} '
+
+        self.pr(f'{depth} {event.status} {conflict}{event.name}')
         timespec = self.unparse_timespec_recurrence(recur_spec, start, end)
         self.pr(f'  {OrgProc.SCHEDULED}: {timespec}')
 
@@ -110,7 +124,6 @@ class OrgEventUnparser(OrgProc):
 
         self.pr('  :END:')
 
-
         def prdescription(description):
             for s in description.split('\n'):
                 if s.startswith('*'):
@@ -120,10 +133,17 @@ class OrgEventUnparser(OrgProc):
 
         self.pr(event.description)
 
+        if event.get_conflict_event():
+            self.unparse_event(event.get_conflict_event(), depth=depth+'*', conflict_marker=OrgProc.CONFLICT_HEADING)
+
+
     def unparse_calendar(self, calendar : EvolutionCalendar):
         today = self.today
 
         self.pr(f'* {calendar.name}')
+        self.pr(f'  :{OrgProc.PROPERTIES}:')
+        self.pr(f'  :{OrgCalendar.CALID}: {calendar.uid}')
+        self.pr('  :END:')
         for event in calendar.events.values():
             if not event.recurrences:
                 # Only one event, non-recurring
@@ -162,11 +182,21 @@ class OrgEventUnparser(OrgProc):
 class OrgCalendar:
     '''One calendar representation loaded from an org file'''
 
-    def __init__(self, name : str, events : list[Event]):
-        self._events = EventSet()
-        for e in events:
-            self._events.add(e)
+    CALID = 'CAL-UID'
+
+    def __init__(self, name : str, caluid : str, events):
+        self._uid = caluid
+        if type(events) is EventSet:
+            self._events = events
+        else:
+            self._events = EventSet()
+            for e in events:
+                self._events.add(e)
         self._name = name
+
+    @property
+    def uid(self) -> str:
+        return self._uid
 
     @property
     def name(self) -> str:
@@ -176,6 +206,9 @@ class OrgCalendar:
     def events(self) -> EventSet:
         return self._events
 
+    def merge(self, other):
+        return OrgCalendar(self.name, self.uid, self.events.merge(other.events))
+
 
 class OrgEventParser(OrgProc):
     '''Translate org files into calendars and events'''
@@ -183,17 +216,25 @@ class OrgEventParser(OrgProc):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
+    def org_env(self, filename):
+        return orgparse.OrgEnv(todos=TODOS, dones=DONES, filename=filename)
+
     def load(self, file):
-        return self.translate(orgparse.load(file))
+        return self.translate(orgparse.load(file, env=self.org_env(filename)))
 
     def loads(self, str):
-        return self.translate(orgparse.loads(str))
+        return self.translate(orgparse.loads(str, env=self.org_env('<string>')))
 
     def translate(self, root):
-        return [self.translate_calendar(c) for c in root.children]
+        result = MergingDict()
+        for calnode in root.children:
+            cal = self.translate_calendar(calnode)
+            result[cal.uid] = cal
+        return result
 
     def translate_calendar(self, cal):
         return OrgCalendar(cal.heading,
+                           cal.get_property(OrgCalendar.CALID),
                            [self.translate_event(e) for e in cal.children])
 
     def translate_datetime(self, dt):

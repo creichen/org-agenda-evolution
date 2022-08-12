@@ -1,13 +1,19 @@
 from __future__ import annotations
+
+import collections
 from typing import Generator, Optional
 import sys
 
 from caltime import CalTime, Recurrence, CalConverter
 
+EMPTY_EVENT_NAME='(nameless event)'
+
 # TODO type markers
 TODO_STR='TODO'
 DONE_STR='DONE'
 CANCELLED_STR='CANCELLED'
+
+EMIT_DEBUG=False
 
 def perr(*args, **kwargs):
     print(*args, file=sys.stderr, **kwargs)
@@ -132,7 +138,7 @@ def from_evolution(evo_event, cconverter : CalConverter) -> EventRepeater:
         event.debuginfo.append(('ICAL', str(evo_event.get_icalcomponent())))
 
     if evo_event.get_location():
-        event.location = evo_event.get_location().get_value()
+        event.location = evo_event.get_location()
 
     if evo_event.has_organizer():
         event.organizer = evo_event.get_organizer().get_value()
@@ -196,6 +202,11 @@ class Event:
     def get_conflict_event(self):
         return None
 
+    def populate_properties(self):
+        for p, (_, default) in Event.PROPERTIES.items():
+            if not hasattr(self, p):
+                setattr(self, p, default)
+
     @property
     def event_id(self):
         return self._event_id
@@ -219,11 +230,16 @@ class Event:
         merges as (True, merged).
         '''
         output = {}
-        for prop in Event.PROPERTIES:
+        for prop, (proptype, _) in Event.PROPERTIES.items():
             pself = getattr(self, prop)
             pother = getattr(other_event, prop)
-            if pself == pother:
-                continue
+
+            if proptype is str and pself is not None and pother is not None:
+                if pself.strip() == pother.strip():
+                    continue
+            else:
+                if pself == pother:
+                    continue
 
             v = (False, (pself, pother))
 
@@ -344,7 +360,7 @@ class CalEvent(Event):
     '''A calendar event that may contain one or more event occurrences'''
     def __init__(self, uid : str):
         super().__init__(uid, None)
-        self.occurrences : list[Event] = [] # Only for "top-level events": Sequence IDs
+        self.populate_properties()
 
 
 class EventOccurrence(Event):
@@ -357,16 +373,36 @@ class EventOccurrence(Event):
 
 
 # ----------------------------------------
+# An order-preserving dict that supports merging
+class MergingDict(collections.OrderedDict):
+    '''Ordered dict with the ability to merge another MergingDict'''
+    def __init__(self):
+        super().__init__()
+
+    def merge(self, other) -> MergingDict:
+        result = self.__class__()
+        for k, v in self.items():
+            if k in other:
+                v = v.merge(other[k])
+            result[k] = v
+        for k, v in other.items():
+            if k not in self:
+                result[k] = v
+        return result
+
+# ----------------------------------------
 # EventSet
-class EventSet(dict):
+class EventSet(MergingDict):
     '''A set of calendar events, indexed by their event IDs'''
     def __init__(self):
-        super(dict, EventSet).__init__(self)
+        super().__init__()
 
     def add(self, event):
         if event.event_id in self:
             self[event.event_id].merge(event)
         else:
             self[event.event_id] = event
+
+
 
 

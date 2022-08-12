@@ -27,7 +27,8 @@ def mk_event(evid : str, name : str, start, end, **args):
 
 class TestUnparse(unittest.TestCase):
 
-    def mk_unparser(self, **kwd):
+    @staticmethod
+    def mk_unparser(**kwd):
         if 'local_timezone' not in kwd:
             kwd['local_timezone'] = None
         if 'emit_debug' not in kwd:
@@ -39,12 +40,14 @@ class TestUnparse(unittest.TestCase):
             return (u, f.getvalue)
         return fgen
 
+    # ----------------------------------------
     def test_simple(self):
+        '''Simple event unparsing'''
         ev = mk_event('I0', 'Test',
                       start=dt('2022-01-01T10:00/UTC'),
                       end=dt(  '2022-01-01T11:00/UTC'),
                       recurrences=[])
-        ugen = self.mk_unparser(today=dt('2022-01-01'))
+        ugen = TestUnparse.mk_unparser(today=dt('2022-01-01'))
         oup, getstr = ugen()
         oup.unparse_event(ev)
         self.assertEqual(
@@ -56,10 +59,46 @@ class TestUnparse(unittest.TestCase):
 
 ''', getstr())
 
+    # ----------------------------------------
+    def test_conflict(self):
+        '''Unparse an event generated from a conflict'''
+        ev0 = mk_event('I0', 'Test',
+                       start=dt('2022-01-01T10:00/UTC'),
+                       end=dt(  '2022-01-01T11:00/UTC'),
+                       description='A',
+                       status=event.TODO,
+                       recurrences=[])
+
+        ev1 = mk_event('I0', 'Test',
+                       start=dt('2022-01-01T10:00/UTC'),
+                       end=dt(  '2022-01-01T11:00/UTC'),
+                       description='B',
+                       status=event.DONE,
+                       recurrences=[])
+
+        ev = ev0.merge(ev1)
+        ugen = self.mk_unparser(today=dt('2022-01-01'))
+        oup, getstr = ugen()
+        oup.unparse_event(ev)
+        self.assertEqual(
+            '''** DONE Test
+  SCHEDULED: <2022-01-01 Sat 10:00-11:00>
+  :PROPERTIES:
+  :CALEVENT-UID: I0
+  :END:
+A
+*** DONE !CONFLICT! Test
+  SCHEDULED: <2022-01-01 Sat 10:00-11:00>
+  :PROPERTIES:
+  :CALEVENT-UID: I0
+  :END:
+B
+''', getstr())
+
 
 class TestParse(unittest.TestCase):
 
-    def parser(self, **kwd):
+    def parser(**kwd):
         if 'local_timezone' not in kwd:
             kwd['local_timezone'] = None
         if 'emit_debug' not in kwd:
@@ -68,19 +107,143 @@ class TestParse(unittest.TestCase):
         return OrgEventParser(**kwd)
 
     def test_simple(self):
-            cals = self.parser().loads('''* CAL0
+        cals = TestParse.parser().loads('''* CAL0
+  :PROPERTIES:
+  :CAL-UID: C0
+  :END:
 ** TODO Test
   SCHEDULED: <2022-01-01 Sat 10:00-11:00>
   :PROPERTIES:
   :CALEVENT-UID: I0
   :END:
 ''')
-            self.assertEqual(1, len(cals))
-            c = cals[0]
-            self.assertEqual('CAL0', c.name)
-            self.assertEqual(1, len(c.events))
-            e = c.events['I0'] # implicitly assert existence below:
-            self.assertEqual('I0', e.event_id)
-            self.assertEqual('Test', e.name)
-            self.assertEqual(dt('2022-01-01T10:00/UTC'), e.start)
-            self.assertEqual(dt('2022-01-01T11:00/UTC'), e.end)
+        self.assertEqual(1, len(cals))
+        c = cals['C0']
+        self.assertEqual('CAL0', c.name)
+        self.assertEqual(1, len(c.events))
+        self.assertEqual('C0', c.uid)
+        e = c.events['I0'] # implicitly assert existence below:
+        self.assertEqual('I0', e.event_id)
+        self.assertEqual('Test', e.name)
+        self.assertEqual(dt('2022-01-01T10:00/UTC'), e.start)
+        self.assertEqual(dt('2022-01-01T11:00/UTC'), e.end)
+
+
+class TestIntegrate(unittest.TestCase):
+
+    def test_two_calendars(self):
+        cals_0 = TestParse.parser().loads('''
+* CAL0
+  :PROPERTIES:
+  :CAL-UID: C0
+  :END:
+** TODO C0-Alpha
+  SCHEDULED: <2022-01-01 Sat 10:00-11:00>
+  :PROPERTIES:
+  :CALEVENT-UID: I0
+  :LOCATION: loc-A
+  :END:
+** DONE C0-Beta
+  SCHEDULED: <2022-01-01 Sat 12:00-13:00>
+  :PROPERTIES:
+  :CALEVENT-UID: I1
+  :END:
+* CAL1
+  :PROPERTIES:
+  :CAL-UID: C1
+  :END:
+** TODO C1-Gamma
+  SCHEDULED: <2022-01-01 Sat 09:00-09:30>
+  :PROPERTIES:
+  :CALEVENT-UID: I2
+  :END:
+A Comment
+** TODO C1-Delta
+  SCHEDULED: <2022-01-01 Sat 09:30-09:45>
+  :PROPERTIES:
+  :CALEVENT-UID: I3
+  :END:
+''')
+        cals_1 = TestParse.parser().loads('''
+* CAL0
+  :PROPERTIES:
+  :CAL-UID: C0
+  :END:
+** TODO C0-Alpha
+  SCHEDULED: <2022-01-01 Sat 10:00-11:00>
+  :PROPERTIES:
+  :LOCATION: loc-A
+  :CALEVENT-UID: I0
+  :END:
+A comment from over here
+* CAL1
+  :PROPERTIES:
+  :CAL-UID: C1
+  :END:
+** TODO C1-Epsilon
+  SCHEDULED: <2022-01-01 Sat 19:30-19:45>
+  :PROPERTIES:
+  :CALEVENT-UID: I4
+  :END:
+** CANCELLED C1-Gamma
+  SCHEDULED: <2022-01-01 Sat 09:00-09:30>
+  :PROPERTIES:
+  :CALEVENT-UID: I2
+  :END:
+** TODO C1-Delta
+  SCHEDULED: <2022-01-01 Sat 09:30-09:45>
+  :PROPERTIES:
+  :LOCATION: loc-D
+  :CALEVENT-UID: I3
+  :END:
+''')
+        cals = cals_0.merge(cals_1)
+        ugen = TestUnparse.mk_unparser(today=dt('2022-01-01'))
+        oup, getstr = ugen()
+        oup.unparse_all(cals)
+
+        self.maxDiff=4096
+
+        self.assertEqual(OUTPUT_HEADER +
+'''
+* CAL0
+  :PROPERTIES:
+  :CAL-UID: C0
+  :END:
+** TODO C0-Alpha
+  SCHEDULED: <2022-01-01 Sat 10:00-11:00>
+  :PROPERTIES:
+  :LOCATION: loc-A
+  :CALEVENT-UID: I0
+  :END:
+A comment from over here
+** DONE C0-Beta
+  SCHEDULED: <2022-01-01 Sat 12:00-13:00>
+  :PROPERTIES:
+  :CALEVENT-UID: I1
+  :END:
+
+* CAL1
+  :PROPERTIES:
+  :CAL-UID: C1
+  :END:
+** CANCELLED C1-Gamma
+  SCHEDULED: <2022-01-01 Sat 09:00-09:30>
+  :PROPERTIES:
+  :CALEVENT-UID: I2
+  :END:
+A Comment
+** TODO C1-Delta
+  SCHEDULED: <2022-01-01 Sat 09:30-09:45>
+  :PROPERTIES:
+  :LOCATION: loc-D
+  :CALEVENT-UID: I3
+  :END:
+
+** TODO C1-Epsilon
+  SCHEDULED: <2022-01-01 Sat 19:30-19:45>
+  :PROPERTIES:
+  :CALEVENT-UID: I4
+  :END:
+
+''', getstr())

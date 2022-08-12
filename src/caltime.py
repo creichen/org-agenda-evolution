@@ -45,12 +45,17 @@ RECURRENCE_ENCODING = {
 }
 
 class CalTimeIncrement:
-    '''Special date increments'''
+    '''
+    Special date increments as replacements for timedelta objects
+    '''
     def __add__(self, caltime):
         raise Exception('NIY')
 
 
 class MonthIncrement(CalTimeIncrement):
+    '''
+    Date increment for (multi-)monthly recurrence
+    '''
     def __init__(self, count=1):
         super().__init__()
         self.months = count
@@ -78,6 +83,9 @@ class MonthIncrement(CalTimeIncrement):
 
 
 class YearIncrement(MonthIncrement):
+    '''
+    Date increment for (multi-)yearly recurrence
+    '''
     def __init__(self, count=1):
         # FIXME: optimise me
         super().__init__(count=0)
@@ -93,6 +101,9 @@ WEEKSTART_SUN = I_CAL_SUNDAY_WEEKDAY
 WEEKSTART_MON = I_CAL_MONDAY_WEEKDAY
 
 class CalTime(datetime):
+    '''
+    Extension of datatime with specialised stringification and conversion operations
+    '''
     # We default to the standard datetime mapping (WEEKSTART_MON):
     WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -187,31 +198,6 @@ class CalTime(datetime):
             if not ill_formed:
                 return CalTime(year, month, day, hour, minute, tzinfo=tzinfo)
         raise Exception(f'Ill-formed CalTime({s})')
-
-    # @staticmethod
-    # def from_evolution_cdt(t, tzresolver=None):
-    #     if t is None:
-    #         return None
-
-    #     timezone = None
-    #     if t.get_tzid() is not None:
-    #         timezone = tzresolver[t.get_tzid()]
-
-    #     return CalTime.from_evolution(t.get_value(), timezone=timezone, tzresolver=tzresolver)
-
-    # @staticmethod
-    # def from_evolution(t, timezone=None, tzresolver=None):
-    #     if t is None or t.is_null_time():
-    #         return None
-
-    #     # This seems to always hold for me; not sure if it is universal?
-    #     assert t.get_timezone() is None or t.get_timezone().get_utc_offset()[0] == 0
-    #     return CalTime(year=t.get_year(),
-    #                    month=t.get_month(),
-    #                    day=t.get_day(),
-    #                    hour=t.get_hour(),
-    #                    minute=t.get_minute(),
-    #                    tzinfo=timezone)
 
 
 class Subiterator:
@@ -584,10 +570,15 @@ class CalConverter:
     def time_from_evolution(self, t):
         '''Convert Evolution recurrence objects to caltime.Recurrence'''
 
-        if t is None or t.is_null_time():
+        if t is None:
             return None
 
         timezone = self.timezone(t.get_tzid())
+
+        if hasattr(t, 'get_value'):
+            t = t.get_value()
+        if t is None or t.is_null_time():
+            return None
 
         # This seems to always hold for me; not sure if it is universal?
         assert t.get_timezone() is None or t.get_timezone().get_utc_offset()[0] == 0
