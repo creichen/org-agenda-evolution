@@ -21,7 +21,7 @@ RECURRENCE_EMIT_FUTURE_DAYS = 7
 '''Timezone to convert input into'''
 LOCAL_TIMEZONE=None # UTC
 '''Include one-time events earlier than today'''
-PAST_EVENTS=True
+PAST_EVENTS=False
 '''Header for output file'''
 OUTPUT_HEADER='#+STARTUP: content\n#+FILETAGS: :@calendar:\n'
 
