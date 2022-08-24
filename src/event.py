@@ -196,7 +196,7 @@ class Event:
         'debuginfo'            : (list[str], []),
     }
 
-    UNDIFFABLE_PROPERTIES = ['debuginfo', 'recurrences']
+    UNDIFFABLE_PROPERTIES = ['debuginfo', 'recurrences', 'end']
 
     def __init__(self, event_id : str, sequence_nr : int):
         self._event_id = event_id

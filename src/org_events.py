@@ -76,6 +76,8 @@ class OrgProc:
         return self._tzresolver
 
     def tzresolve(self, tzname):
+        if tzname is None:
+            return None
         # FIXME: this sohuld probably use TZResolver
         try:
             return self.tzresolver[tzname]
@@ -143,7 +145,7 @@ class OrgEventUnparser(OrgProc):
         if event.attendees:
             self.pr(f'  :{OrgProc.ATTENDEES}: ' + ' '.join(event.attendees))
         self.pr(f'  :{OrgProc.EVENT_UID}: {event.event_id}')
-        if start.tzinfo != self.local_timezone:
+        if start.tzinfo and start.tzinfo != self.local_timezone:
             self.pr(f'  :{OrgProc.TZID}: {start.tzinfo}')
 
         if event.recurrences:

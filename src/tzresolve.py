@@ -1,5 +1,4 @@
 import gi
-import caltime
 import sys
 from zoneinfo import ZoneInfo
 
