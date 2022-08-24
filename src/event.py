@@ -196,6 +196,8 @@ class Event:
         'debuginfo'            : (list[str], []),
     }
 
+    UNDIFFABLE_PROPERTIES = ['debuginfo', 'recurrences']
+
     def __init__(self, event_id : str, sequence_nr : int):
         self._event_id = event_id
         self._sequence_nr = sequence_nr
@@ -224,6 +226,15 @@ class Event:
 
     def __repr__(self):
         return f'{self.__class__.__name__}({self.event_id}, seq:{self.sequence_nr})'
+
+    @property
+    def full_str(self):
+        s = f'ID={self.event_id}'
+        for n in Event.PROPERTIES:
+            if hasattr(self, n):
+                v = getattr(self, n)
+                s += f'\n\t{n} = "{v}"'
+        return s
 
     def diff(self, other_event : Event) -> map[str, object]:
         '''
@@ -268,8 +279,9 @@ class Event:
         updates = { }
         diffs = self.diff(other)
 
-        if 'debuginfo' in diffs:
-            del diffs['debuginfo']
+        for suppress_prop in Event.UNDIFFABLE_PROPERTIES:
+            if suppress_prop in diffs:
+                del diffs[suppress_prop]
 
         for k, v in diffs.items():
             resolved, result = v
@@ -377,7 +389,7 @@ class EventRepeater(Event):
                         yield ProxyEvent(self, seq_nr, start=ev_start, end=ev_end)
 
     def __str__(self):
-        return f'{self.status_str} {self.name} at: {self.start}'
+        return f'{self.status} {self.name} at: {self.start}'
 
 
 class CalEvent(Event):

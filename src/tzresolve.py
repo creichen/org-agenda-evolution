@@ -54,7 +54,9 @@ class TZResolver:
         daylight_time = self._custom_vtimezone_part(vtimezone.get_first_component(DAYLIGHT))
         # FIXME: package utilise
 
-    def __getitem__(self, tzname):
+    def __getitem__(self, tzname : str):
+        '''Look up time zone bu name'''
+        # FIXME: use __call__ for ZoneInfo compatibility?
         if tzname is None:
             return None
 

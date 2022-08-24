@@ -42,6 +42,7 @@ class OrgProc:
     ATTENDEES = 'ATTENDEES'
     LOCATION = 'LOCATION'
     EVENT_UID = 'CALEVENT-UID'
+    TZID = 'CONVERTED-FROM-TZID'
 
     CONFLICT_HEADING = '!CONFLICT!' # extra string added to heading of conflicts
 
@@ -63,6 +64,17 @@ class OrgProc:
         self.past_events = past_events
         self.emit_debug = emit_debug
         self.today = CalTime.today(local_timezone) if today is None else today
+        self._tzresolver = None
+
+    def tzresolve(self, tzname):
+        # FIXME: this sohuld probably use TZResolver
+        if self._tzresolver is None:
+            self._tzresolver = ZoneInfo
+        try:
+            return self._tzresolver(tzname)
+        except ValueError:
+            perr(f'Failed to resolve timezone "{tzname}"')
+            return None
 
 
 class OrgEventUnparser(OrgProc):
@@ -120,7 +132,7 @@ class OrgEventUnparser(OrgProc):
             self.pr(f'  :{OrgProc.ATTENDEES}: ' + ' '.join(event.attendees))
         self.pr(f'  :{OrgProc.EVENT_UID}: {event.event_id}')
         if start.tzinfo != self.local_timezone:
-            self.pr(f'  :CONVERTED-FROM-TZID: {start.tzinfo}')
+            self.pr(f'  :{OrgProc.TZID}: {start.tzinfo}')
 
         if self.emit_debug:
             self.pr(f'  :ORIGINAL-START: {repr(event.start)}')
@@ -147,7 +159,6 @@ class OrgEventUnparser(OrgProc):
 
     def unparse_calendar(self, calendar : EvolutionCalendar):
         today = self.today
-
         self.pr(f'* {calendar.name}')
         self.pr(f'  :{OrgProc.PROPERTIES}:')
         self.pr(f'  :{OrgCalendar.CALID}: {calendar.uid}')
@@ -155,7 +166,7 @@ class OrgEventUnparser(OrgProc):
         for event in calendar.events.values():
             if not event.recurrences:
                 # Only one event, non-recurring
-                if PAST_EVENTS or event.end.astimezone(self.local_timezone) > today:
+                if self.past_events or event.end.astimezone(self.local_timezone) > today:
                     self.unparse_event(event)
             for recurrence in event.recurrences:
                 if recurrence.spec and self.org_native_recurrence_allowed:
@@ -268,4 +279,11 @@ class OrgEventParser(OrgProc):
         attendees = orgev.get_property(OrgProc.ATTENDEES)
         ev.attendees = sorted([s.strip() for s in attendees.split(' ')]) if attendees else []
         ev.location = orgev.get_property(OrgProc.LOCATION)
+        tzid = orgev.get_property(OrgProc.TZID)
+        if tzid is not None:
+            tzid = self.tzresolve(tzid)
+            if tzid is not None:
+                ev.start = ev.start.astimezone(tzid)
+                if ev.end:
+                    ev.end = ev.end.astimezone(tzid)
         return ev

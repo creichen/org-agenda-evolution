@@ -24,7 +24,6 @@ def mk_event(evid : str, name : str, start, end, **args):
         setattr(ev, k, v)
     return ev
 
-
 class TestUnparse(unittest.TestCase):
 
     @staticmethod
@@ -98,6 +97,7 @@ B
 
 class TestParse(unittest.TestCase):
 
+    @staticmethod
     def parser(**kwd):
         if 'local_timezone' not in kwd:
             kwd['local_timezone'] = None
@@ -106,6 +106,7 @@ class TestParse(unittest.TestCase):
 
         return OrgEventParser(**kwd)
 
+    # ----------------------------------------
     def test_simple(self):
         cals = TestParse.parser().loads('''* CAL0
   :PROPERTIES:
@@ -127,6 +128,69 @@ class TestParse(unittest.TestCase):
         self.assertEqual('Test', e.name)
         self.assertEqual(dt('2022-01-01T10:00/UTC'), e.start)
         self.assertEqual(dt('2022-01-01T11:00/UTC'), e.end)
+
+
+class TestRemerge(unittest.TestCase):
+    '''Test cases for making sure that unparse-reparse works without spurious conflicts'''
+
+    def assertRemergeIsTrivial(self, ev, **kw):
+        ugen = TestUnparse.mk_unparser(**kw)
+        src_cal = OrgCalendar('id-00000', 'X', [ev])
+        oup, getstr = ugen()
+        oup.unparse_calendar(src_cal)
+        s = getstr()
+        cals = TestParse.parser().loads(s)
+        self.assertEqual(1, len(cals))
+        cal = list(cals.values())[0]
+        self.assertEqual(1, len(cal.events))
+        ev2 = list(cal.events.values())[0]
+
+        # print(f'\n[new] {ev.full_str}')
+        # print(f'[old] {ev2.full_str}')
+
+        diffs = ev.diff(ev2)
+        for suppress_prop in event.Event.UNDIFFABLE_PROPERTIES:
+            if suppress_prop in diffs:
+                del diffs[suppress_prop]
+
+        differences_nr = 0
+
+        for k, v in diffs.items():
+            resolved, result = v
+            if not resolved:
+                if not differences_nr:
+                    print('')
+                differences_nr += 1
+                print(f'difference #{differences_nr}\t[old {k}] "{repr(result[0])}" : {type(result[0])}')
+                print(f'            \t[new {k}] "{repr(result[1])}" : {type(result[1])}')
+
+        self.assertEqual(0, differences_nr)
+
+    # ----------------------------------------
+    def test_attendees(self):
+        '''Simple event unparsing'''
+        ev = mk_event('I0', 'Test',
+                      start=dt('2022-01-01T10:00/UTC'),
+                      end=dt(  '2022-01-01T11:00/UTC'),
+                      attendees = ['foo@bar.com', 'user@email.com'],
+                      status = event.TODO,
+                      recurrences=[])
+        self.assertRemergeIsTrivial(ev,
+                                    today=dt('2022-01-01'))
+
+    # ----------------------------------------
+    def test_repeat(self):
+        '''Simple event unparsing'''
+        ev = mk_event('I0', 'Test',
+                      start=dt('2022-01-01T10:00/CET'),
+                      end=dt(  '2022-01-01T11:00/CET'),
+                      attendees = ['foo@bar.com', 'user@email.com'],
+                      status = event.TODO,
+                      recurrences=[daily()])
+        # summer time
+        self.assertRemergeIsTrivial(ev,
+                                    today=dt('2022-05-21/CET'),
+                                    past_events = False)
 
 
 class TestIntegrate(unittest.TestCase):
