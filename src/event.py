@@ -211,6 +211,10 @@ class Event:
                 setattr(self, p, default)
 
     @property
+    def base_event(self):
+        return None
+
+    @property
     def event_id(self):
         return self._event_id
 
@@ -317,6 +321,10 @@ class ProxyEvent(Event):
         self._overrides = overrides
         self._conflict_event = conflict_event
 
+    @property
+    def base_event(self):
+        return self._base
+
     def get_conflict_event(self):
         return self._conflict_event
 
@@ -356,6 +364,10 @@ class EventRepeater(Event):
         self.organizer = None
         self.evo_event = None
         self.debuginfo = []
+
+    @property
+    def base_event(self):
+        return self
 
     def in_interval(self, start : Optional[CalTime], end : CalTime) -> Generator[Event]:
         '''All events that intersect with this interval. 'start' may be None.'''
@@ -397,15 +409,6 @@ class CalEvent(Event):
     def __init__(self, uid : str):
         super().__init__(uid, None)
         self.populate_properties()
-
-
-class EventOccurrence(Event):
-    def __init__(self, uid : str):
-        super().__init__(uid, None)
-
-    @property
-    def recurrences(self):
-        return []
 
 
 # ----------------------------------------

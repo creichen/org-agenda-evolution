@@ -171,11 +171,14 @@ class CalTime(datetime):
             untiltime = '-' + untiltime.time_str()
         return f'<{self.date_str()} {self.time_str()}{untiltime}{repstr}>'
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.date_str().replace(' ', ':') + ':' + self.time_str() + ('' if self.tzinfo is None else f'/{self.tzinfo}')
 
-    def equivalent(self, other):
+    def equivalent(self, other) -> bool:
         return self == other.astimezone(self.tzinfo)
+
+    def to_str(self) -> str:
+        return self.strftime('%Y-%m-%dT%H:%M')
 
     @staticmethod
     def from_str(s, tzinfo=None):

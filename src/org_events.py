@@ -43,6 +43,8 @@ class OrgProc:
     LOCATION = 'LOCATION'
     EVENT_UID = 'CALEVENT-UID'
     TZID = 'CONVERTED-FROM-TZID'
+    FIRST_START = 'FIRST-START'
+    FIRST_END = 'FIRST-END'
 
     CONFLICT_HEADING = '!CONFLICT!' # extra string added to heading of conflicts
 
@@ -65,16 +67,26 @@ class OrgProc:
         self.emit_debug = emit_debug
         self.today = CalTime.today(local_timezone) if today is None else today
         self._tzresolver = None
+        self._cconv = None
+
+    @property
+    def tzresolver(self):
+        if self._tzresolver is None:
+            self._tzresolver = TZResolver(None)
+        return self._tzresolver
 
     def tzresolve(self, tzname):
         # FIXME: this sohuld probably use TZResolver
-        if self._tzresolver is None:
-            self._tzresolver = ZoneInfo
         try:
-            return self._tzresolver(tzname)
+            return self.tzresolver[tzname]
         except ValueError:
             perr(f'Failed to resolve timezone "{tzname}"')
             return None
+
+    def parse_datetime(self, spec : str) -> CalTime:
+        if self._cconv is None:
+            self._cconv = CalConverter(self.tzresolver)
+        return self._cconv.time_from_str(spec)
 
 
 class OrgEventUnparser(OrgProc):
@@ -133,6 +145,11 @@ class OrgEventUnparser(OrgProc):
         self.pr(f'  :{OrgProc.EVENT_UID}: {event.event_id}')
         if start.tzinfo != self.local_timezone:
             self.pr(f'  :{OrgProc.TZID}: {start.tzinfo}')
+
+        if event.recurrences:
+            self.pr(f'  :{OrgProc.FIRST_START}: {event.base_event.start.astimezone(None).to_str()}')
+            if event.base_event.end:
+                self.pr(f'  :{OrgProc.FIRST_END}: {event.base_event.end.astimezone(None).to_str()}')
 
         if self.emit_debug:
             self.pr(f'  :ORIGINAL-START: {repr(event.start)}')
@@ -275,11 +292,22 @@ class OrgEventParser(OrgProc):
                 ev.end = ev.start + timedelta(days=1)
             else:
                 ev.end = ev.start
+
+        original_start = orgev.get_property(OrgProc.FIRST_START)
+        original_end = orgev.get_property(OrgProc.FIRST_END)
+        # FIXME: hack: when parsing repeat occurrences, overwrite date/time to avoid merge conflicts
+        if original_start:
+            ev.start = self.parse_datetime(original_start)
+        if original_end:
+            ev.end = self.parse_datetime(original_end)
+
         ev.description = orgev.body
         attendees = orgev.get_property(OrgProc.ATTENDEES)
         ev.attendees = sorted([s.strip() for s in attendees.split(' ')]) if attendees else []
         ev.location = orgev.get_property(OrgProc.LOCATION)
+
         tzid = orgev.get_property(OrgProc.TZID)
+
         if tzid is not None:
             tzid = self.tzresolve(tzid)
             if tzid is not None:
