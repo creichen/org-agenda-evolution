@@ -1,3 +1,24 @@
+# This file is Copyright (C) 2022 Christoph Reichenbach
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the
+#   Free Software Foundation, Inc.
+#   59 Temple Place, Suite 330
+#   Boston, MA  02111-1307
+#   USA
+#
+# The author can be reached as "creichen" at the usual gmail server.
+
 from __future__ import annotations
 
 import sys
@@ -65,7 +86,7 @@ class OrgProc:
         self.local_timezone = ZoneInfo('UTC' if local_timezone is None else local_timezone)
         self.past_events = past_events
         self.emit_debug = emit_debug
-        self.today = CalTime.today(local_timezone) if today is None else today
+        self.today = CalTime.today(local_timezone) if today is None else today.astimezone(local_timezone)
         self._tzresolver = None
         self._cconv = None
 
@@ -185,6 +206,7 @@ class OrgEventUnparser(OrgProc):
         for event in calendar.events.values():
             if not event.recurrences:
                 # Only one event, non-recurring
+                #print(event.end.astimezone(self.local_timezone), today.astimezone)
                 if self.past_events or event.end.astimezone(self.local_timezone) > today:
                     self.unparse_event(event)
             for recurrence in event.recurrences:
@@ -311,9 +333,11 @@ class OrgEventParser(OrgProc):
         tzid = orgev.get_property(OrgProc.TZID)
 
         if tzid is not None:
-            tzid = self.tzresolve(tzid)
-            if tzid is not None:
-                ev.start = ev.start.astimezone(tzid)
-                if ev.end:
-                    ev.end = ev.end.astimezone(tzid)
+            tzid = 'UTC'
+
+        tzid = self.tzresolve(tzid)
+        if tzid is not None:
+            ev.start = ev.start.astimezone(tzid)
+            if ev.end:
+                ev.end = ev.end.astimezone(tzid)
         return ev

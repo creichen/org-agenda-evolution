@@ -1,0 +1,73 @@
+* org-agenda-evolution link
+
+Import Evolution calendars into org-mode, via one-way synchronisation
+(i.e., it tries to merge your org event edits with event updates in
+the calendars, but doesn't push them to those calendars, at least not
+yet.)
+
+* Status
+I use it for myself fairly continuously, but for general use it lacks:
+- an installation mechanism
+- configuration management
+
+* Alternatives
+- Exchange: [[https://elpa.gnu.org/packages/excorporate.html][org-excorporate]] (I couldn't get it to work on the setup I was using, which is how this project came about)
+- GCal: [[https://orgmode.org/worg/org-tutorials/org-google-sync.html][Various options]] listed by the org-mode team (I haven't tried them)
+
+* Usage
+- Set up Evolution to sync with any Exchange, GCal, ... servers you
+  want to work with.
+- Pick a name for an org file that you will be using exclusively for
+  calendars and events from Evolution.
+- Tweak the source code for your custom `org-mode` configuration
+  (e.g., if your time zone is not UTC).  (There is no configuration
+  system right now, though many bits of interest are top-level
+  definitions in some of the source files.)
+- Manually check that it works (cf. "Running", below)
+- Set up `cron` to run `main.py` regularly, as outlined below.
+
+** Missing features
+- Configuration file
+- Installation / packaging (suggestions welcome!)
+- Merging calendar changes back to Evolution
+- Multi-day events: must be broken up into individual days for proper
+  org-mode handling (I think?)
+- Integration with org-agenda recurrence.  Emitting these is
+  implemented but currently disabled, since it doesn't integrate with
+  merging.
+- More detailed tracking (e.g., per-field hashes) to better support
+  fine-grained event merging
+
+** Known bugs
+- Changing an event end date in the org file is ignored when merging
+  the event with the Evolution calendar (at least for recurring
+  events).
+- Custom time zones are detected but don't work properly
+- Not all ICal recurrence features are suported (only the ones I've
+  been able to set up myself for testing)
+- Changes to events in a series don't seem to show up reliably (e.g.,
+  individual events cancelled by Apple's calendaring software are
+  still marked TODO; suggestions welcome)
+
+* Dependencies
+- `python-3.9`
+- `gir1.2-ecalendar-1.2`
+- `gir1.2-ecal-2.0`
+- `orgparse`
+- `python3-tzinfo`
+
+* Running
+
+Initial fetch:
+
+`python3 main.py -F ${HOME}/my/org/files/evolution-calendars.org`
+
+Update and merge (*new*):
+
+`python3 main.py -U ${HOME}/my/org/files/evolution-calendars.org`
+
+(Tries to merge changes in the org file with changes in the calendar)
+
+* Testing
+
+`./test.sh`
