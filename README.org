@@ -19,12 +19,12 @@ I use it for myself fairly continuously, but for general use it lacks:
   want to work with.
 - Pick a name for an org file that you will be using exclusively for
   calendars and events from Evolution.
-- Tweak the source code for your custom `org-mode` configuration
+- Tweak the source code for your custom ~org-mode~ configuration
   (e.g., if your time zone is not UTC).  (There is no configuration
   system right now, though many bits of interest are top-level
   definitions in some of the source files.)
 - Manually check that it works (cf. "Running", below)
-- Set up `cron` to run `main.py` regularly, as outlined below.
+- Set up ~cron~ to run ~main.py~ regularly, as outlined below.
 
 ** Missing features
 - Configuration file
@@ -50,24 +50,24 @@ I use it for myself fairly continuously, but for general use it lacks:
   still marked TODO; suggestions welcome)
 
 * Dependencies
-- `python-3.9`
-- `gir1.2-ecalendar-1.2`
-- `gir1.2-ecal-2.0`
-- `orgparse`
-- `python3-tzinfo`
+- ~python-3.9~
+- ~gir1.2-ecalendar-1.2~
+- ~gir1.2-ecal-2.0~
+- ~orgparse~
+- ~python3-tzinfo~
 
 * Running
 
 Initial fetch:
 
-`python3 main.py -F ${HOME}/my/org/files/evolution-calendars.org`
+~python3 main.py -F ${HOME}/my/org/files/evolution-calendars.org~
 
 Update and merge (*new*):
 
-`python3 main.py -U ${HOME}/my/org/files/evolution-calendars.org`
+~python3 main.py -U ${HOME}/my/org/files/evolution-calendars.org~
 
 (Tries to merge changes in the org file with changes in the calendar)
 
 * Testing
 
-`./test.sh`
+~./test.sh~
