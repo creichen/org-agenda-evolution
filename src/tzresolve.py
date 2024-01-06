@@ -53,37 +53,68 @@ class TZResolver:
         except ValueError:
             return None
 
-    def _custom_vtimezone_part(self, vtimezone_part):
+    def _custom_vtimezone_part(self, vtimezone_part, TZOFFSETFROM):
         # FIXME
         #OFFSETFROM = type(vtimezone_part).kind_from_string('TZOFFSETFROM')
         #OFFSETTO = type(vtimezone_part).kind_from_string('TZOFFSETTO')
+        #TZOFFSETFROM = type(vtimezone_part).kind_from_string('TZOFFSETFROM')
         dstz = vtimezone_part
 
-        offset = None
-        prop = dstz.get_first_property(0)
-        while prop:
-            if 'TZOFFSETFROM' == prop.get_property_name():
-                offset = prop.get_tzoffsetfrom()
-        return offset
+        PREFIX = 'TZOFFSETFROM:'
 
-        # ICal.icalproperty_get_tzoffsetfrom() expects a Property, but we don't have the enum int encoding
-        # for TZOFFSETFROM and TZOFFSETTO, otherwise we could probably get those values more easily
-        # already.  This can probably be solved by finding something analogous to 'kind_from_string' in
-        # _custom_vtimezone and calling vtimezone_part.get_first_proeprty(Mystery.kind_from_String('TZOFFSETFROM'))
-        # but I haven't had the time to look more.
+        matches = [line for line in dstz.as_ical_string().split('\n')
+                   if line.startswith(PREFIX)]
+        if len(matches) == 1:
+            delta = matches[0][len(PREFIX):]
+            delta_sign = 1
+            if (delta.startswith('+')):
+                delta_sign = 1
+                delta = delta[1:]
+            elif (delta.startswith('-')):
+                delta_sign = -1
+                delta = delta[1:]
+            delta_h = int(delta[0:2])
+            delta_min = int(delta[2:4])
+            #print(f' tzdelta = sign={delta_sign}, {delta_h}h, {delta_min}min')
 
-        #delta_from = ICal.icalproperty_get_tzoffsetfrom(vtimezone_part)
-        #delta_to = ICal.icalproperty_get_tzoffsetto(vtimezone_part)
-        #perr(f'  -> deltas : {delta_from} / {delta_to}');
-        # FIXME: Event.from_evolution(), package utilise
-        pass
+
+        # offset = None
+        # prop = dstz.find_property('TZOFFSETFROM')
+        # print(prop)
+        # exit(1)
+        # # print(dir(prop))
+        # # properties = prop.get_components()#properties('TZOFFSETFROM')
+        # # for p in properties:
+        # #     perr('!!--')
+        # #     print(p.as_ical_string())
+        # #     perr('----')
+        # if prop:
+        #     perr(prop.as_ical_string())
+        #     offset = prop.get_tzoffsetfrom()
+        #     perr(dir(dstz.get_inner().get_first_property(TZOFFSETFROM)))
+        #     perr(f'off={offset}')
+        #     exit(1)
+        # return offset
+
+        # # ICal.icalproperty_get_tzoffsetfrom() expects a Property, but we don't have the enum int encoding
+        # # for TZOFFSETFROM and TZOFFSETTO, otherwise we could probably get those values more easily
+        # # already.  This can probably be solved by finding something analogous to 'kind_from_string' in
+        # # _custom_vtimezone and calling vtimezone_part.get_first_proeprty(Mystery.kind_from_String('TZOFFSETFROM'))
+        # # but I haven't had the time to look more.
+
+        # #delta_from = ICal.icalproperty_get_tzoffsetfrom(vtimezone_part)
+        # #delta_to = ICal.icalproperty_get_tzoffsetto(vtimezone_part)
+        # #perr(f'  -> deltas : {delta_from} / {delta_to}');
+        # # FIXME: Event.from_evolution(), package utilise
+        # pass
 
     def _custom_vtimezone(self, vtimezone):
         DAYLIGHT = type(vtimezone).kind_from_string('DAYLIGHT')
         STANDARD = type(vtimezone).kind_from_string('STANDARD')
+        TZOFFSETFROM = type(vtimezone).kind_from_string('TZOFFSETFROM')
         # These guys are essentially Events, including recurrences:
-        standard_time = self._custom_vtimezone_part(vtimezone.get_first_component(STANDARD))
-        daylight_time = self._custom_vtimezone_part(vtimezone.get_first_component(DAYLIGHT))
+        standard_time = self._custom_vtimezone_part(vtimezone.get_first_component(STANDARD), TZOFFSETFROM)
+        daylight_time = self._custom_vtimezone_part(vtimezone.get_first_component(DAYLIGHT), TZOFFSETFROM)
         # FIXME: package utilise
 
     def __getitem__(self, tzname : str):
@@ -95,7 +126,7 @@ class TZResolver:
         zinfo = self._lookup(tzname)
 
         if not zinfo:
-            perr(f'Struggling with "{tzname}", asking client')
+            #perr(f'Struggling with "{tzname}", asking client')
             success, tz = self.ecal_client.get_timezone_sync(tzname)
             if not success:
                 perr('-> ECal does not know its own time zone?')
@@ -106,9 +137,10 @@ class TZResolver:
                     # get_first_property
                     self._custom_vtimezone(vtimezone)
                     BAD_TIMEZONES.append(tz)
-                    perr(f'-> ECal found it: "{tz.get_display_name()}"')
+                    #perr(f'-> ECal found it: "{tz.get_display_name()}"')
                     try:
-                        perr(f'-> utc offset: {tz.get_utc_offset(None)}')
+                        #perr(f'-> utc offset: {tz.get_utc_offset(None)}')
+                        pass
                     except _:
                         pass
 
