@@ -55,6 +55,16 @@ class TZResolver:
 
     def _custom_vtimezone_part(self, vtimezone_part):
         # FIXME
+        #OFFSETFROM = type(vtimezone_part).kind_from_string('TZOFFSETFROM')
+        #OFFSETTO = type(vtimezone_part).kind_from_string('TZOFFSETTO')
+        dstz = vtimezone_part
+
+        offset = None
+        prop = dstz.get_first_property(0)
+        while prop:
+            if 'TZOFFSETFROM' == prop.get_property_name():
+                offset = prop.get_tzoffsetfrom()
+        return offset
 
         # ICal.icalproperty_get_tzoffsetfrom() expects a Property, but we don't have the enum int encoding
         # for TZOFFSETFROM and TZOFFSETTO, otherwise we could probably get those values more easily

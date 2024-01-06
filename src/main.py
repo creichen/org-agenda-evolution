@@ -67,6 +67,7 @@ class EvolutionCalendar:
         self._cancellable = gio_cancellable
         self._events = None
         self._uid = evocalendar.get_uid()
+        self.cc = None
 
     @property
     def uid(self):
@@ -102,6 +103,7 @@ class EvolutionCalendar:
                 return self._events
 
             cconverter = CalConverter(TZResolver(client))
+            self.cc = cconverter
             for v in values:
                 if v is not None:
                     self._events.add(event.from_evolution(v, cconverter=cconverter))
