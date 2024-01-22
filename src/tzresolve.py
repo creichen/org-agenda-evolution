@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import gi
 import sys
+import zoneinfo
 from zoneinfo import ZoneInfo
 
 gi.require_version('ICal', '3.0')
@@ -50,7 +51,7 @@ class TZResolver:
 
         try:
             return ZoneInfo(tzname)
-        except ValueError:
+        except (ValueError, zoneinfo._common.ZoneInfoNotFoundError, ModuleNotFoundError):
             return None
 
     def _custom_vtimezone_part(self, vtimezone_part, TZOFFSETFROM):
